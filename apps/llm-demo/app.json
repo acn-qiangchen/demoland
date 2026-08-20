@@ -1,0 +1,25 @@
+{
+  "name": "llm-demo",
+  "description": "Token-streaming chat demo: Spring Boot WebFlux + Spring AI OpenAI backend streams tokens to a vanilla-JS SSE frontend.",
+  "version": "0.1.0",
+  "maintainer": "qiang-chen",
+  "port": 8080,
+  "healthEndpoint": "/health",
+  "tags": ["web", "api", "llm", "sse", "streaming"],
+  "env": [
+    {
+      "name": "SPRING_AI_OPENAI_API_KEY",
+      "default": "",
+      "description": "OpenAI API key used by Spring AI to call the OpenAI API (injected from AWS Secrets Manager in the deployed task)"
+    },
+    {
+      "name": "PORT",
+      "default": "8080",
+      "description": "Port the app listens on (server.port)"
+    }
+  ],
+  "resources": {
+    "requests": { "cpu": "256m", "memory": "512Mi" },
+    "limits":   { "cpu": "512m", "memory": "1024Mi" }
+  }
+}

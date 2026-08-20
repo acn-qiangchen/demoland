@@ -1,0 +1,20 @@
+{
+  "name": "{{APP_NAME}}",
+  "description": "Short description of what this demo shows.",
+  "version": "0.1.0",
+  "maintainer": "your-github-handle",
+  "port": 8080,
+  "healthEndpoint": "/health",
+  "tags": ["web", "api"],
+  "env": [
+    {
+      "name": "PORT",
+      "default": "8080",
+      "description": "Port the app listens on"
+    }
+  ],
+  "resources": {
+    "requests": { "cpu": "100m", "memory": "128Mi" },
+    "limits":   { "cpu": "500m", "memory": "512Mi" }
+  }
+}

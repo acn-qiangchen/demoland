@@ -1,0 +1,58 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+.terraform.lock.hcl
+terraform.tfvars
+!terraform.tfvars.example
+*.tfplan
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
+kubeconfig-*
+
+# Node
+node_modules/
+dist/
+.next/
+.nuxt/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+
+# Go
+bin/
+*.exe
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+build/
+out/
+target/
+
+# Logs
+*.log
+logs/

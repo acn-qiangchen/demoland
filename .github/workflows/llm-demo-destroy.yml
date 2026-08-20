@@ -1,0 +1,94 @@
+name: llm-demo destroy
+
+# Manual only. Tears down everything the deploy workflow created.
+on:
+  workflow_dispatch:
+    inputs:
+      aws_account_id:
+        description: "AWS account ID"
+        required: true
+      aws_access_key_id:
+        description: "AWS access key ID"
+        required: true
+      aws_secret_access_key:
+        description: "AWS secret access key"
+        required: true
+      aws_region:
+        description: "AWS region"
+        required: true
+        default: "us-east-1"
+
+env:
+  APP_NAME: llm-demo
+  TF_DIR: infra/app-template/terraform
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (masked)
+        run: |
+          echo "::add-mask::${{ inputs.aws_access_key_id }}"
+          echo "::add-mask::${{ inputs.aws_secret_access_key }}"
+          echo "::add-mask::${{ inputs.aws_account_id }}"
+          {
+            echo "AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }}"
+            echo "AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }}"
+            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
+            echo "AWS_REGION=${{ inputs.aws_region }}"
+            echo "TF_STATE_BUCKET=demoland-tfstate-${{ inputs.aws_account_id }}"
+            echo "TF_LOCK_TABLE=demoland-tflock"
+          } >> "$GITHUB_ENV"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=${APP_NAME}/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE"
+
+      - name: Empty the frontend S3 bucket
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          BUCKET="$(terraform output -raw s3_bucket_name 2>/dev/null || true)"
+          if [ -n "$BUCKET" ]; then
+            echo "Emptying s3://$BUCKET"
+            aws s3 rm "s3://$BUCKET" --recursive || true
+          else
+            echo "No bucket in state; skipping."
+          fi
+
+      - name: Terraform destroy
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          # openai_api_key is a required var; a placeholder is fine for destroy.
+          terraform destroy -auto-approve \
+            -var "aws_region=$AWS_REGION" \
+            -var "openai_api_key=placeholder-not-used-on-destroy"
+
+      - name: Job summary
+        run: |
+          {
+            echo "## llm-demo destroyed :wastebasket:"
+            echo ""
+            echo "All app resources (ECS, ALB, ECR, S3, CloudFront, Secrets Manager, VPC) have been removed."
+            echo ""
+            echo "> Note: CloudFront distribution deletion can take **~15–20 minutes** to fully"
+            echo "> propagate on AWS's side even after this job reports success."
+            echo ""
+            echo "The Terraform state bucket and DynamoDB lock table are left in place for reuse."
+          } >> "$GITHUB_STEP_SUMMARY"
