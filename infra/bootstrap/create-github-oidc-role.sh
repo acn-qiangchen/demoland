@@ -88,7 +88,12 @@ cat >"${WORKDIR}/trust.json" <<JSON
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": { "${OIDC_HOST}:aud": "sts.amazonaws.com" },
-        "StringLike":   { "${OIDC_HOST}:sub": "repo:${GH_OWNER}/${GH_REPO}:*" }
+        "StringLike":   {
+          "${OIDC_HOST}:sub": [
+            "repo:${GH_OWNER}/${GH_REPO}:*",
+            "repo:${GH_OWNER}@*/${GH_REPO}@*:*"
+          ]
+        }
       }
     }
   ]
@@ -155,5 +160,5 @@ echo " Done. Use this as the workflow 'aws_role_arn' input:"
 echo
 echo "   ${ROLE_ARN}"
 echo
-echo " Trust scope: repo:${GH_OWNER}/${GH_REPO}:*  (any ref)"
+echo " Trust scope: repo:${GH_OWNER}/${GH_REPO} (plain or owner@id/repo@id form), any ref"
 echo "============================================================"

@@ -32,6 +32,15 @@ the **`aws_role_arn`** input. There are no access-key/secret inputs anymore — 
 ever typed into a workflow form or written to a log.
 
 ## Notes
+
+- **Customized OIDC subject claim (`Not authorized to perform sts:AssumeRoleWithWebIdentity`).**
+  Some orgs/enterprises (e.g. Accenture) customize the GitHub OIDC subject to embed immutable numeric
+  IDs — the token `sub` looks like `repo:acn-qiangchen@3345428/demoland@1340961699:ref:...` instead of
+  the plain `repo:acn-qiangchen/demoland:ref:...`. The trust policy here allows **both** forms
+  (`repo:owner/repo:*` and `repo:owner@*/repo@*:*`), so it works either way while still pinning to your
+  exact owner+repo. If assume-role is denied, check the actual `sub` (the deploy workflow's temporary
+  "Debug OIDC claims" step prints it) and confirm it matches.
+
 - **Provider already exists?** Only one `token.actions.githubusercontent.com` OIDC provider is
   allowed per AWS account. If `apply` fails with `EntityAlreadyExists`, either:
   - re-run with `-var 'create_oidc_provider=false'` to reuse the existing provider, or

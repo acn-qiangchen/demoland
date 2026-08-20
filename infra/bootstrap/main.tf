@@ -37,8 +37,11 @@ locals {
 }
 
 # Trust policy: only tokens from this repo, with the sts.amazonaws.com audience,
-# may assume the role. Tighten the `sub` to a branch/environment if you want to
-# restrict which refs can deploy, e.g. "repo:owner/repo:ref:refs/heads/main".
+# may assume the role. Two sub patterns are allowed: the plain form and the
+# immutable-ID form (repo:owner@<ownerId>/repo@<repoId>:*) that some orgs/enterprises
+# emit when they customize the OIDC subject claim. Tighten the `sub` to a
+# branch/environment if you want to restrict which refs can deploy,
+# e.g. "repo:owner/repo:ref:refs/heads/main".
 data "aws_iam_policy_document" "trust" {
   statement {
     effect  = "Allow"
@@ -58,7 +61,10 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_owner}/${var.github_repo}:*"]
+      values = [
+        "repo:${var.github_owner}/${var.github_repo}:*",
+        "repo:${var.github_owner}@*/${var.github_repo}@*:*",
+      ]
     }
   }
 }
