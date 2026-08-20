@@ -57,13 +57,17 @@ Deployment is fully driven by GitHub Actions (manual `workflow_dispatch`) onto A
   calls the relative `/api/chat`, so there is no CORS and no custom domain needed.
 - **OpenAI key** → GitHub repo secret `SPRING_AI_OPENAI_API_KEY` → AWS Secrets Manager →
   injected into the ECS task as an env var. It never appears in workflow inputs or logs.
+- **AWS auth** → **GitHub OIDC**. The workflows assume an IAM role via a short-lived token; there
+  are no static AWS access keys anywhere.
 
 Infra is Terraform in [`infra/app-template/terraform/`](../../infra/app-template/terraform/),
-parameterized by `app_name` (default `llm-demo`).
+parameterized by `app_name` (default `llm-demo`). The OIDC provider + deploy role are a one-time
+bootstrap in [`infra/bootstrap/`](../../infra/bootstrap/).
 
 Workflows:
-- **`.github/workflows/llm-demo-deploy.yml`** — bootstraps TF state, builds + pushes the image,
-  applies Terraform, uploads the frontend, and prints the CloudFront URL.
+- **`.github/workflows/llm-demo-deploy.yml`** — assumes the OIDC role, bootstraps TF state, builds +
+  pushes the image, applies Terraform, uploads the frontend, and prints the CloudFront URL.
 - **`.github/workflows/llm-demo-destroy.yml`** — tears everything down.
 
-Both take AWS `account_id` / `access_key_id` / `secret_access_key` / `region` as dispatch inputs.
+Both take non-sensitive `aws_role_arn` / `aws_region` dispatch inputs (deploy also takes `image_tag`).
+Run `infra/bootstrap` once to create the role and get its ARN.

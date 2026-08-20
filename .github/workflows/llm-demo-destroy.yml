@@ -1,26 +1,27 @@
 name: llm-demo destroy
 
 # Manual only. Tears down everything the deploy workflow created.
+# Authenticates to AWS via GitHub OIDC — no long-lived access keys.
 on:
   workflow_dispatch:
     inputs:
-      aws_account_id:
-        description: "AWS account ID"
-        required: true
-      aws_access_key_id:
-        description: "AWS access key ID"
-        required: true
-      aws_secret_access_key:
-        description: "AWS secret access key"
+      aws_role_arn:
+        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
         required: true
       aws_region:
         description: "AWS region"
         required: true
         default: "us-east-1"
 
+# id-token: write is required for the runner to request an OIDC token from GitHub.
+permissions:
+  id-token: write
+  contents: read
+
 env:
   APP_NAME: llm-demo
   TF_DIR: infra/app-template/terraform
+  TF_LOCK_TABLE: demoland-tflock
 
 jobs:
   destroy:
@@ -32,19 +33,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (masked)
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: llm-demo-destroy
+
+      - name: Resolve account ID and state bucket
         run: |
-          echo "::add-mask::${{ inputs.aws_access_key_id }}"
-          echo "::add-mask::${{ inputs.aws_secret_access_key }}"
-          echo "::add-mask::${{ inputs.aws_account_id }}"
-          {
-            echo "AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }}"
-            echo "AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }}"
-            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
-            echo "AWS_REGION=${{ inputs.aws_region }}"
-            echo "TF_STATE_BUCKET=demoland-tfstate-${{ inputs.aws_account_id }}"
-            echo "TF_LOCK_TABLE=demoland-tflock"
-          } >> "$GITHUB_ENV"
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "TF_STATE_BUCKET=demoland-tfstate-${ACCOUNT_ID}" >> "$GITHUB_ENV"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

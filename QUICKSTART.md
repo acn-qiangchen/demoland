@@ -53,6 +53,9 @@ Everything is driven by two manual workflows — **no local AWS tooling needed**
 the JAR + image, provisions all infra with Terraform (ECS Fargate + ALB + ECR + S3 + CloudFront +
 Secrets Manager), uploads the frontend, and prints the public URL.
 
+Auth to AWS uses **GitHub OIDC** — the workflow assumes an IAM role via a short-lived token, so you
+never type AWS access keys into a workflow form (which would otherwise leak in public run logs).
+
 ### 1. One-time setup
 
 1. **Push this repo to GitHub** (the workflows live in `.github/workflows/`).
@@ -60,20 +63,22 @@ Secrets Manager), uploads the frontend, and prints the public URL.
    `Settings → Secrets and variables → Actions → New repository secret`
    - Name: `SPRING_AI_OPENAI_API_KEY`
    - Value: `sk-...`
-3. Have an **AWS access key / secret** for an account with permission to create VPC, ECS, ALB, ECR,
-   S3, CloudFront, IAM, and Secrets Manager resources.
+3. **Bootstrap the OIDC role** — run the script and answer the prompts (it asks for your AWS
+   account number + access key/secret each time; nothing is written to disk):
+   ```bash
+   ./infra/bootstrap/create-github-oidc-role.sh   # prints the role ARN at the end
+   ```
+   (Terraform is available as an alternative — see [`infra/bootstrap/README.md`](infra/bootstrap/README.md).)
 
 ### 2. Deploy
 
 `Actions` tab → **llm-demo deploy** → **Run workflow**, then fill in:
 
-| Input                   | Example        | Notes                                  |
-| ----------------------- | -------------- | -------------------------------------- |
-| `aws_account_id`        | `123456789012` | your 12-digit account ID               |
-| `aws_access_key_id`     | `AKIA...`      | masked in logs                         |
-| `aws_secret_access_key` | `...`          | masked in logs                         |
-| `aws_region`            | `us-east-1`    | default                                |
-| `image_tag`             | `latest`       | default                                |
+| Input          | Example                                            | Notes                                  |
+| -------------- | -------------------------------------------------- | -------------------------------------- |
+| `aws_role_arn` | `arn:aws:iam::123456789012:role/demoland-github-actions-deploy` | the `role_arn` from step B.1.3 (not sensitive) |
+| `aws_region`   | `us-east-1`                                        | default                                |
+| `image_tag`    | `latest`                                           | default                                |
 
 Run it. When the job finishes, the **job summary** shows:
 
@@ -90,7 +95,7 @@ health checks and CloudFront needs to finish propagating.
 
 ### 3. Tear it down
 
-`Actions` tab → **llm-demo destroy** → **Run workflow** → same AWS credential inputs.
+`Actions` tab → **llm-demo destroy** → **Run workflow** → same `aws_role_arn` + `aws_region` inputs.
 
 This removes ECS, ALB, ECR, S3, CloudFront, Secrets Manager, and the VPC. The Terraform **state
 bucket** (`demoland-tfstate-<account_id>`) and lock table are intentionally kept for reuse.
@@ -107,7 +112,8 @@ bucket** (`demoland-tfstate-<account_id>`) and lock table are intentionally kept
 | Local frontend can't reach the API         | You skipped the `API_URL` change in A.3 — relative `/api/chat` won't hit :8080.    |
 | Page loads but chat 502s right after deploy | ECS task not healthy yet — wait 1–2 min, then retry.                               |
 | Stream cuts off around ~60s                | CloudFront origin read timeout caps at 60s without a quota increase (see infra comments). |
-| Deploy fails on state bucket / lock        | Another deploy is mid-run, or creds lack S3/DynamoDB perms.                         |
+| Deploy fails on state bucket / lock        | Another deploy is mid-run, or the OIDC role lacks S3/DynamoDB perms.                |
+| `configure-aws-credentials` fails to assume role | Wrong `aws_role_arn`, or the bootstrap trust policy doesn't match this repo (`github_owner`/`github_repo`). |
 
 ## Cost note
 
@@ -115,5 +121,8 @@ While up: ~1 Fargate task + 1 ALB + CloudFront ≈ a few USD/day. Run **llm-demo
 
 ## Security note
 
-AWS credentials are passed as `workflow_dispatch` inputs and are masked in logs, but still appear in
-run metadata. For anything beyond a throwaway demo, prefer GitHub OIDC or repo secrets.
+The workflows use **GitHub OIDC**: no long-lived AWS access keys exist anywhere — the runner assumes
+the bootstrapped IAM role with a short-lived token, and the only workflow inputs (`aws_role_arn`,
+`aws_region`, `image_tag`) are non-sensitive. The OpenAI key lives only in a GitHub repo secret →
+AWS Secrets Manager, never in logs or frontend code. The bootstrap role's IAM policy is intentionally
+broad for the demo; scope it down in `infra/bootstrap/main.tf` for real use.

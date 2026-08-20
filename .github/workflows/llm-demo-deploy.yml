@@ -1,19 +1,13 @@
 name: llm-demo deploy
 
-# Manual only. AWS credentials are supplied as inputs (masked in logs).
-# NOTE: AWS creds passed as workflow inputs still appear in run metadata even when masked.
-# GitHub recommends OIDC or repo secrets for real environments — this is implemented as requested.
+# Manual only. Authenticates to AWS via GitHub OIDC — no long-lived access keys.
+# The workflow assumes an IAM role (bootstrapped once via infra/bootstrap/) using a
+# short-lived token, so no AWS secret ever appears in inputs, logs, or run metadata.
 on:
   workflow_dispatch:
     inputs:
-      aws_account_id:
-        description: "AWS account ID"
-        required: true
-      aws_access_key_id:
-        description: "AWS access key ID"
-        required: true
-      aws_secret_access_key:
-        description: "AWS secret access key"
+      aws_role_arn:
+        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
         required: true
       aws_region:
         description: "AWS region"
@@ -24,11 +18,17 @@ on:
         required: true
         default: "latest"
 
+# id-token: write is required for the runner to request an OIDC token from GitHub.
+permissions:
+  id-token: write
+  contents: read
+
 env:
   APP_NAME: llm-demo
   TF_DIR: infra/app-template/terraform
   BACKEND_DIR: apps/llm-demo/backend
   FRONTEND_FILE: apps/llm-demo/frontend/index.html
+  TF_LOCK_TABLE: demoland-tflock
 
 jobs:
   deploy:
@@ -40,20 +40,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (masked)
-        run: |
-          echo "::add-mask::${{ inputs.aws_access_key_id }}"
-          echo "::add-mask::${{ inputs.aws_secret_access_key }}"
-          echo "::add-mask::${{ inputs.aws_account_id }}"
-          {
-            echo "AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }}"
-            echo "AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }}"
-            echo "AWS_DEFAULT_REGION=${{ inputs.aws_region }}"
-            echo "AWS_REGION=${{ inputs.aws_region }}"
-            echo "TF_STATE_BUCKET=demoland-tfstate-${{ inputs.aws_account_id }}"
-            echo "TF_LOCK_TABLE=demoland-tflock"
-          } >> "$GITHUB_ENV"
-
       - name: Check OpenAI API key secret is set
         env:
           SPRING_AI_OPENAI_API_KEY: ${{ secrets.SPRING_AI_OPENAI_API_KEY }}
@@ -62,6 +48,20 @@ jobs:
             echo "::error::Repo secret SPRING_AI_OPENAI_API_KEY is not set."
             exit 1
           fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: llm-demo-deploy
+
+      - name: Resolve account ID and state bucket
+        run: |
+          set -euo pipefail
+          # After OIDC assume-role, derive the account from STS — no account_id input needed.
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "TF_STATE_BUCKET=demoland-tfstate-${ACCOUNT_ID}" >> "$GITHUB_ENV"
 
       - name: Bootstrap Terraform state backend (idempotent)
         run: |
