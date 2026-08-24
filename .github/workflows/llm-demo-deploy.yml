@@ -1,16 +1,13 @@
 name: llm-demo deploy
 
-# Manual only. Authenticates to AWS via GitHub OIDC — no long-lived access keys.
-# The workflow assumes an IAM role (bootstrapped once via infra/bootstrap/) using a
-# short-lived token, so no AWS secret ever appears in inputs, logs, or run metadata.
+# Manual only (workflow_dispatch). Auto-run on push to main is intentionally disabled: a push
+# provides no workflow inputs, and the OIDC role ARN must be supplied per run, so an auto-run
+# would fail. Trigger this from the Actions tab and pass the role ARN explicitly.
+#
+# Authenticates to AWS via GitHub OIDC — no long-lived access keys. The workflow assumes an IAM
+# role (bootstrapped once via infra/bootstrap/) using a short-lived token, so no AWS secret ever
+# appears in inputs, logs, or run metadata.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/llm-demo/**"
-      - "infra/app-template/terraform/**"
-      - ".github/workflows/llm-demo-deploy.yml"
   workflow_dispatch:
     inputs:
       aws_role_arn:
@@ -53,10 +50,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Resolve deploy inputs
-        # On a push trigger, inputs.* are empty; fall back to repo variables.
-        # IMAGE_TAG uses the commit SHA by default so every push produces a unique
-        # tag — Terraform detects the change, creates a new task definition revision,
-        # and ECS performs a rolling restart to pick up the new image.
+        # Dispatch inputs are authoritative; repo variables (vars.*) act as a fallback if an
+        # input is left blank. IMAGE_TAG uses the commit SHA by default so each run produces a
+        # unique tag — Terraform detects the change, creates a new task definition revision, and
+        # ECS performs a rolling restart to pick up the new image.
         run: |
           set -euo pipefail
           ROLE="${{ inputs.aws_role_arn }}"
