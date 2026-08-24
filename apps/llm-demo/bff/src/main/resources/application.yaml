@@ -1,0 +1,24 @@
+server:
+  port: 8081
+
+spring:
+  mvc:
+    async:
+      # Upper bound on how long a relayed SSE stream may stay open before Spring aborts the
+      # async request. Keep it well above a normal generation; unrelated to the per-read timeout.
+      request-timeout: ${BFF_ASYNC_REQUEST_TIMEOUT:300000}
+
+llm:
+  service:
+    # Base URL of the LLM backend the BFF forwards to.
+    base-url: ${LLM_SERVICE_BASE_URL:http://localhost:8080}
+
+  # ---- HTTP request timeouts (milliseconds) — tune these placeholders per environment ----
+  http:
+    # Time to establish the TCP connection to the backend.
+    connect-timeout: ${LLM_HTTP_CONNECT_TIMEOUT:5000}
+    # Socket read timeout. For SSE this is the max gap allowed between token chunks,
+    # NOT the total stream length — keep it above the model's inter-token latency.
+    read-timeout: ${LLM_HTTP_READ_TIMEOUT:60000}
+    # Time to wait for a free connection from the pool.
+    connection-request-timeout: ${LLM_HTTP_CONNECTION_REQUEST_TIMEOUT:5000}

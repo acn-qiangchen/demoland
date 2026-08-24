@@ -10,9 +10,17 @@ You need an **OpenAI API key** (starts with `sk-...`) for both paths.
 
 ## A. Run locally
 
-**Prereqs:** JDK 17, Maven 3.9+. (Check: `java -version` → 17, `mvn -v`.)
+The local stack is three pieces: the **backend** LLM service (`:8080`), the **BFF** relay
+(`:8081`) that the web frontend talks to, and the static **frontend**.
 
-### 1. Start the backend
+```
+browser (index.html)  ->  bff (:8081)  ->  backend (:8080, Spring AI + OpenAI)
+```
+
+**Prereqs:** JDK 17, Maven 3.9+ (check: `java -version` → 17, `mvn -v`), and two free terminals
+(one each for the backend and the BFF, since both stay in the foreground).
+
+### 1. Start the backend (LLM service, :8080)
 
 ```bash
 cd apps/llm-demo/backend
@@ -20,30 +28,66 @@ export SPRING_AI_OPENAI_API_KEY=sk-...               # your real key
 mvn spring-boot:run                                  # serves http://localhost:8080
 ```
 
-### 2. Smoke-test it
+### 2. Start the BFF (relay, :8081) — in a second terminal
 
 ```bash
-curl localhost:8080/health                           # -> ok
+cd apps/llm-demo/bff
+export LLM_SERVICE_BASE_URL=http://localhost:8080    # optional — this is the default
+mvn spring-boot:run                                  # serves http://localhost:8081
+```
 
-curl -N -X POST localhost:8080/api/chat \
+The BFF needs no OpenAI key — it only forwards to the backend. Timeouts are tunable via
+`LLM_HTTP_CONNECT_TIMEOUT` / `LLM_HTTP_READ_TIMEOUT` / `LLM_HTTP_CONNECTION_REQUEST_TIMEOUT`
+(see `apps/llm-demo/bff/README.md`).
+
+### 3. Smoke-test
+
+Health on both services:
+
+```bash
+curl localhost:8080/health                           # -> ok   (backend)
+curl localhost:8081/health                           # -> ok   (bff)
+```
+
+**SSE (streaming) through the BFF** — tokens should arrive progressively:
+
+```bash
+curl -N -X POST localhost:8081/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"say hi in 3 words"}'
 # streams:  event: token ... (repeated) ... event: done  data:[DONE]
 ```
 
-If you see `event: token` lines streaming in, the backend works.
+**REST (blocking) through the BFF** — one JSON payload after generation finishes:
 
-### 3. Open the frontend
+```bash
+curl -X POST localhost:8081/api/chat/rest \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"say hi in 3 words"}'
+# -> {"content":"..."}   (arrives all at once, not streamed)
+```
 
-The frontend calls a **relative** `/api/chat`, which only resolves when served from the same origin
-as the API (that's how it works behind CloudFront in prod). For a pure-local run, do **one** of these:
+If the SSE call streams `event: token` lines and the REST call returns a single JSON object, the
+relay works. You can hit `:8080` directly with the same paths to compare the BFF against the
+backend — the responses should be identical.
+
+### 4. Open the frontend
+
+The frontend calls **relative** `/api/chat` and `/api/chat/rest`, which resolve against whatever
+origin serves it (that's how it works behind CloudFront in prod). For a pure-local run, point it at
+the BFF — do **one** of these:
 
 - **Quick tweak (easiest):** in `apps/llm-demo/frontend/index.html`, temporarily change
-  `const API_URL = '/api/chat';` → `const API_URL = 'http://localhost:8080/api/chat';`
-  then open the file in your browser. *(Don't commit this change.)*
-- **No edit:** serve the file from any static server and reverse-proxy `/api` to `localhost:8080`.
+  ```js
+  const SSE_URL  = '/api/chat';        // -> 'http://localhost:8081/api/chat'
+  const REST_URL = '/api/chat/rest';   // -> 'http://localhost:8081/api/chat/rest'
+  ```
+  then open the file in your browser. *(Don't commit this change.)* The BFF sends
+  `Access-Control-Allow-Origin: *`, so a `file://` page can call it.
+- **No edit:** serve the file from any static server and reverse-proxy `/api` to `localhost:8081`.
 
-Type a prompt and watch tokens stream in.
+Use the **SSE Streaming / REST (Blocking)** toggle to feel the difference: SSE tokens appear one by
+one; REST shows a spinner, then the whole answer at once.
 
 ---
 
@@ -109,7 +153,9 @@ bucket** (`demoland-tfstate-<account_id>`) and lock table are intentionally kept
 | Symptom                                    | Likely cause / fix                                                                 |
 | ------------------------------------------ | ---------------------------------------------------------------------------------- |
 | Deploy fails at "Check OpenAI API key"     | Repo secret `SPRING_AI_OPENAI_API_KEY` isn't set (Step B.1.2).                     |
-| Local frontend can't reach the API         | You skipped the `API_URL` change in A.3 — relative `/api/chat` won't hit :8080.    |
+| Local frontend can't reach the API         | You skipped the `SSE_URL` / `REST_URL` change in A.4 — relative `/api/*` won't hit :8081. |
+| BFF returns 500 / can't reach backend      | Backend not up on :8080, or `LLM_SERVICE_BASE_URL` points at the wrong host.       |
+| BFF stream cuts off mid-answer             | Bump `LLM_HTTP_READ_TIMEOUT` (gap between tokens) or `BFF_ASYNC_REQUEST_TIMEOUT` (total stream lifetime). |
 | Page loads but chat 502s right after deploy | ECS task not healthy yet — wait 1–2 min, then retry.                               |
 | Stream cuts off around ~60s                | CloudFront origin read timeout caps at 60s without a quota increase (see infra comments). |
 | Deploy fails on state bucket / lock        | Another deploy is mid-run, or the OIDC role lacks S3/DynamoDB perms.                |

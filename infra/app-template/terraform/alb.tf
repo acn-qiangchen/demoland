@@ -14,7 +14,7 @@ resource "aws_lb" "this" {
 
 resource "aws_lb_target_group" "this" {
   name        = "${var.app_name}-tg"
-  port        = 8080
+  port        = 8081
   protocol    = "HTTP"
   vpc_id      = aws_vpc.this.id
   target_type = "ip"

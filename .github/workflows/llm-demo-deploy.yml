@@ -34,6 +34,7 @@ env:
   APP_NAME: llm-demo
   TF_DIR: infra/app-template/terraform
   BACKEND_DIR: apps/llm-demo/backend
+  BFF_DIR: apps/llm-demo/bff
   FRONTEND_FILE: apps/llm-demo/frontend/index.html
   TF_LOCK_TABLE: demoland-tflock
   # Resolved in the "Resolve deploy inputs" step below.
@@ -137,8 +138,10 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Build backend
-        run: mvn -q -B -f "$BACKEND_DIR/pom.xml" clean package -DskipTests
+      - name: Build backend and bff
+        run: |
+          mvn -q -B -f "$BACKEND_DIR/pom.xml" clean package -DskipTests
+          mvn -q -B -f "$BFF_DIR/pom.xml" clean package -DskipTests
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -154,25 +157,32 @@ jobs:
             -backend-config="region=$AWS_REGION" \
             -backend-config="dynamodb_table=$TF_LOCK_TABLE"
 
-      - name: Phase 1 — create ECR repository only
+      - name: Phase 1 — create ECR repositories only
         working-directory: ${{ env.TF_DIR }}
         env:
           SPRING_AI_OPENAI_API_KEY: ${{ secrets.SPRING_AI_OPENAI_API_KEY }}
         run: |
           terraform apply -auto-approve \
             -target=aws_ecr_repository.this \
+            -target=aws_ecr_repository.bff \
             -var "aws_region=$AWS_REGION" \
             -var "image_tag=$IMAGE_TAG" \
             -var "openai_api_key=$SPRING_AI_OPENAI_API_KEY"
-          echo "ECR_URL=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_ENV"
+          {
+            echo "ECR_URL=$(terraform output -raw ecr_repository_url)"
+            echo "ECR_BFF_URL=$(terraform output -raw ecr_bff_repository_url)"
+          } >> "$GITHUB_ENV"
 
-      - name: Build and push image
+      - name: Build and push images
         run: |
           set -euo pipefail
+          # Both repos share the same account registry host, so one login covers both.
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "${ECR_URL%%/*}"
           docker build -t "$ECR_URL:$IMAGE_TAG" "$BACKEND_DIR"
           docker push "$ECR_URL:$IMAGE_TAG"
+          docker build -t "$ECR_BFF_URL:$IMAGE_TAG" "$BFF_DIR"
+          docker push "$ECR_BFF_URL:$IMAGE_TAG"
 
       - name: Terraform apply (full stack)
         working-directory: ${{ env.TF_DIR }}
@@ -187,7 +197,21 @@ jobs:
             echo "CF_DOMAIN=$(terraform output -raw cloudfront_domain_name)"
             echo "CF_DIST_ID=$(terraform output -raw cloudfront_distribution_id)"
             echo "S3_BUCKET=$(terraform output -raw s3_bucket_name)"
+            echo "ECS_CLUSTER=$(terraform output -raw ecs_cluster_name)"
+            echo "ECS_SERVICE=$(terraform output -raw ecs_service_name)"
           } >> "$GITHUB_ENV"
+
+      - name: Force new ECS deployment
+        # Guarantees a rolling restart on every run — even a re-run of the same commit SHA
+        # where Terraform sees no task-def change. wait services-stable fails the job if the
+        # new tasks never become healthy.
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" \
+            --force-new-deployment --region "$AWS_REGION" >/dev/null
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --region "$AWS_REGION"
 
       - name: Upload frontend and invalidate CloudFront
         run: |
