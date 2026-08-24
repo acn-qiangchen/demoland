@@ -110,8 +110,8 @@ cat >"${WORKDIR}/perms.json" <<'JSON'
       "Sid": "InfraServices",
       "Effect": "Allow",
       "Action": [
-        "ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "s3:*",
-        "cloudfront:*", "secretsmanager:*", "logs:*", "dynamodb:*",
+        "ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "apigateway:*",
+        "s3:*", "cloudfront:*", "secretsmanager:*", "logs:*", "dynamodb:*",
         "application-autoscaling:*", "sts:GetCallerIdentity"
       ],
       "Resource": "*"

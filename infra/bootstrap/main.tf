@@ -88,6 +88,7 @@ data "aws_iam_policy_document" "deploy" {
       "ecs:*",
       "ecr:*",
       "elasticloadbalancing:*",
+      "apigateway:*",
       "s3:*",
       "cloudfront:*",
       "secretsmanager:*",
