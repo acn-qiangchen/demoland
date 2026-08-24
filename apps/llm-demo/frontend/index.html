@@ -613,7 +613,14 @@
       clearInterval(elapsedTimer);
 
       if (!response.ok) {
-        throw new Error('HTTP ' + response.status);
+        // The BFF returns a JSON { content } body on errors too (e.g. 504 on upstream
+        // timeout) — show that message instead of a bare status code.
+        let msg = 'HTTP ' + response.status;
+        try {
+          const body = await response.json();
+          if (body && body.content) msg = body.content;
+        } catch (_) { /* non-JSON error body; keep the status code */ }
+        throw new Error(msg);
       }
 
       const { content } = await response.json();

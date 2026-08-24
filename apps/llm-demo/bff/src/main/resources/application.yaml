@@ -18,7 +18,8 @@ llm:
     # Time to establish the TCP connection to the backend.
     connect-timeout: ${LLM_HTTP_CONNECT_TIMEOUT:5000}
     # Socket read timeout. For SSE this is the max gap allowed between token chunks,
-    # NOT the total stream length — keep it above the model's inter-token latency.
-    read-timeout: ${LLM_HTTP_READ_TIMEOUT:60000}
+    # NOT the total stream length. When it fires, the BFF surfaces a 504 (REST) or an SSE
+    # error event (streaming) instead of hanging.
+    read-timeout: ${LLM_HTTP_READ_TIMEOUT:5000}
     # Time to wait for a free connection from the pool.
     connection-request-timeout: ${LLM_HTTP_CONNECTION_REQUEST_TIMEOUT:5000}

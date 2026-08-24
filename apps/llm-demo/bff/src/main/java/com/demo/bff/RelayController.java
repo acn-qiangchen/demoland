@@ -3,17 +3,22 @@ package com.demo.bff;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -68,9 +73,13 @@ public class RelayController {
                         pipe(upstream, clientOut);
                     } catch (Exception e) {
                         // Best-effort: surface the failure as an SSE error event, mirroring the
-                        // frontend's expectation of event/data framing.
-                        log.warn("SSE relay interrupted: {}", e.getMessage());
-                        writeErrorEvent(clientOut, e.getMessage());
+                        // frontend's expectation of event/data framing. The 200/headers are already
+                        // committed here, so a timeout can't become a 504 on this path.
+                        String detail = isTimeout(e)
+                                ? "the backend took too long to respond and the stream timed out"
+                                : e.getMessage();
+                        log.warn("SSE relay interrupted: {}", detail);
+                        writeErrorEvent(clientOut, detail);
                     }
                     return null;
                 });
@@ -81,6 +90,35 @@ public class RelayController {
     public FullResponse chatRest(@RequestBody ChatRequest request) {
         return restTemplate.postForObject(
                 backendBaseUrl + "/api/chat/rest", request, FullResponse.class);
+    }
+
+    /**
+     * Maps an upstream read/connect timeout to a 504 Gateway Timeout with a user-facing message.
+     * RestTemplate wraps the Apache HttpClient {@link SocketTimeoutException} in a
+     * {@link ResourceAccessException}; only the timeout case becomes a 504, other connectivity
+     * failures fall through to a 502. This handler applies to the blocking {@code /chat/rest} path
+     * (the streaming path surfaces timeouts as an SSE error event, since its 200 status and headers
+     * are already committed by the time bytes start flowing).
+     */
+    @ExceptionHandler(ResourceAccessException.class)
+    public ResponseEntity<FullResponse> handleUpstreamFailure(ResourceAccessException ex) {
+        if (isTimeout(ex)) {
+            log.warn("Upstream timed out: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                    .body(new FullResponse("The backend took too long to respond and the request timed out. Please try again."));
+        }
+        log.warn("Upstream unreachable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new FullResponse("The backend service is currently unavailable. Please try again."));
+    }
+
+    private static boolean isTimeout(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof SocketTimeoutException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Copies the upstream stream to the client, flushing each chunk so SSE stays real-time. */
