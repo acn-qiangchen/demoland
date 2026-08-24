@@ -4,6 +4,13 @@ name: llm-demo deploy
 # The workflow assumes an IAM role (bootstrapped once via infra/bootstrap/) using a
 # short-lived token, so no AWS secret ever appears in inputs, logs, or run metadata.
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/llm-demo/**"
+      - "infra/app-template/terraform/**"
+      - ".github/workflows/llm-demo-deploy.yml"
   workflow_dispatch:
     inputs:
       aws_role_arn:
@@ -14,9 +21,9 @@ on:
         required: true
         default: "us-east-1"
       image_tag:
-        description: "Container image tag"
-        required: true
-        default: "latest"
+        description: "Container image tag to deploy (leave blank to use the commit SHA)"
+        required: false
+        default: ""
 
 # id-token: write is required for the runner to request an OIDC token from GitHub.
 permissions:
@@ -29,6 +36,10 @@ env:
   BACKEND_DIR: apps/llm-demo/backend
   FRONTEND_FILE: apps/llm-demo/frontend/index.html
   TF_LOCK_TABLE: demoland-tflock
+  # Resolved in the "Resolve deploy inputs" step below.
+  # Workflow-level env cannot use expressions, so we set the final values there.
+  AWS_ROLE_ARN_INPUT: ${{ inputs.aws_role_arn }}
+  AWS_REGION_INPUT:   ${{ inputs.aws_region }}
 
 jobs:
   deploy:
@@ -39,6 +50,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve deploy inputs
+        # On a push trigger, inputs.* are empty; fall back to repo variables.
+        # IMAGE_TAG uses the commit SHA by default so every push produces a unique
+        # tag — Terraform detects the change, creates a new task definition revision,
+        # and ECS performs a rolling restart to pick up the new image.
+        run: |
+          set -euo pipefail
+          ROLE="${{ inputs.aws_role_arn }}"
+          REGION="${{ inputs.aws_region }}"
+          IMAGE="${{ inputs.image_tag }}"
+
+          echo "AWS_ROLE_ARN=${ROLE:-${{ vars.AWS_ROLE_ARN }}}"   >> "$GITHUB_ENV"
+          echo "AWS_REGION=${REGION:-${{ vars.AWS_REGION || 'us-east-1' }}}" >> "$GITHUB_ENV"
+          echo "IMAGE_TAG=${IMAGE:-${{ github.sha }}}"            >> "$GITHUB_ENV"
 
       - name: Check OpenAI API key secret is set
         env:
@@ -64,8 +90,8 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ inputs.aws_role_arn }}
-          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
           role-session-name: llm-demo-deploy
 
       - name: Resolve account ID and state bucket
@@ -136,7 +162,7 @@ jobs:
           terraform apply -auto-approve \
             -target=aws_ecr_repository.this \
             -var "aws_region=$AWS_REGION" \
-            -var "image_tag=${{ inputs.image_tag }}" \
+            -var "image_tag=$IMAGE_TAG" \
             -var "openai_api_key=$SPRING_AI_OPENAI_API_KEY"
           echo "ECR_URL=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_ENV"
 
@@ -145,8 +171,8 @@ jobs:
           set -euo pipefail
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "${ECR_URL%%/*}"
-          docker build -t "$ECR_URL:${{ inputs.image_tag }}" "$BACKEND_DIR"
-          docker push "$ECR_URL:${{ inputs.image_tag }}"
+          docker build -t "$ECR_URL:$IMAGE_TAG" "$BACKEND_DIR"
+          docker push "$ECR_URL:$IMAGE_TAG"
 
       - name: Terraform apply (full stack)
         working-directory: ${{ env.TF_DIR }}
@@ -155,7 +181,7 @@ jobs:
         run: |
           terraform apply -auto-approve \
             -var "aws_region=$AWS_REGION" \
-            -var "image_tag=${{ inputs.image_tag }}" \
+            -var "image_tag=$IMAGE_TAG" \
             -var "openai_api_key=$SPRING_AI_OPENAI_API_KEY"
           {
             echo "CF_DOMAIN=$(terraform output -raw cloudfront_domain_name)"
@@ -176,6 +202,7 @@ jobs:
             echo "## llm-demo deployed :rocket:"
             echo ""
             echo "**URL:** https://$CF_DOMAIN"
+            echo "**Image tag:** \`$IMAGE_TAG\`"
             echo ""
             echo "It can take a few minutes for the ECS task to become healthy and for the"
             echo "CloudFront distribution to finish propagating."
