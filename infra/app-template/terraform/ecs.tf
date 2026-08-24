@@ -13,6 +13,7 @@ resource "aws_ecs_task_definition" "this" {
 
   container_definitions = jsonencode([
     {
+      # backend — internal only; reachable solely by the bff over loopback (no ALB target).
       name      = var.app_name
       image     = "${aws_ecr_repository.this.repository_url}:${var.image_tag}"
       essential = true
@@ -37,7 +38,43 @@ resource "aws_ecs_task_definition" "this" {
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.this.name
           "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "ecs"
+          "awslogs-stream-prefix" = "backend"
+        }
+      }
+    },
+    {
+      # bff — ALB-facing relay; reaches the backend over the shared task loopback interface.
+      name      = "${var.app_name}-bff"
+      image     = "${aws_ecr_repository.bff.repository_url}:${var.image_tag}"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 8081
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "LLM_SERVICE_BASE_URL"
+          value = "http://localhost:8080"
+        }
+      ]
+
+      dependsOn = [
+        {
+          containerName = var.app_name
+          condition     = "START"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.this.name
+          "awslogs-region"        = var.aws_region
+          "awslogs-stream-prefix" = "bff"
         }
       }
     }
@@ -60,12 +97,13 @@ resource "aws_ecs_service" "this" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.this.arn
-    container_name   = var.app_name
-    container_port   = 8080
+    container_name   = "${var.app_name}-bff"
+    container_port   = 8081
   }
 
   # Give tasks time to pass health checks before ELB marks them unhealthy.
-  health_check_grace_period_seconds = 90
+  # Two JVMs boot in one task, so allow extra warm-up time.
+  health_check_grace_period_seconds = 120
 
   depends_on = [aws_lb_listener.http]
 }

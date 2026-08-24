@@ -16,6 +16,7 @@
     --text: #c9d1e0;
     --text-bright: #eaf0ff;
     --green: #3dd68c;
+    --amber: #f59e0b;
     --red: #f87171;
     --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --sans: "IBM Plex Sans", system-ui, sans-serif;
@@ -58,6 +59,55 @@
     margin: 0;
   }
 
+  /* ---- mode toggle ---- */
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    width: fit-content;
+    margin-bottom: 14px;
+  }
+
+  .mode-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    opacity: 0.6;
+  }
+  .mode-btn:hover { opacity: 0.85; }
+  .mode-btn:disabled { cursor: not-allowed; }
+
+  .mode-btn.active-sse {
+    background: rgba(79, 142, 247, 0.18);
+    color: var(--accent);
+    opacity: 1;
+  }
+  .mode-btn.active-rest {
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--amber);
+    opacity: 1;
+  }
+
+  .mode-desc {
+    font-size: 13px;
+    color: var(--text);
+    opacity: 0.65;
+    margin-bottom: 16px;
+    min-height: 18px;
+    transition: opacity 0.2s;
+  }
+
   /* ---- terminal window ---- */
   .terminal {
     background: var(--surface);
@@ -87,6 +137,7 @@
     font-size: 12px;
     color: var(--text);
     opacity: 0.6;
+    transition: opacity 0.2s;
   }
 
   .status {
@@ -107,8 +158,14 @@
   .status.ready      .status-dot { background: var(--text); }
   .status.connecting .status-dot { background: #ffbd2e; }
   .status.streaming  .status-dot { background: var(--accent); }
+  .status.waiting    .status-dot { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
   .status.done       .status-dot { background: var(--green); }
   .status.error      .status-dot { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
 
   /* ---- output ---- */
   .output {
@@ -122,6 +179,7 @@
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
+    position: relative;
   }
 
   .output .placeholder { opacity: 0.4; }
@@ -136,6 +194,40 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
 
+  /* REST mode spinner overlay */
+  .spinner-wrap {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 20px 18px;
+    min-height: 220px;
+  }
+  .spinner-wrap.visible { display: flex; }
+
+  .spinner {
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .spinner-label {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--amber);
+    opacity: 0.8;
+  }
+  .spinner-elapsed {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    opacity: 0.5;
+  }
+
   /* ---- metrics ---- */
   .metrics {
     display: none;
@@ -149,6 +241,7 @@
   .metrics.visible { display: flex; }
   .metric .k { opacity: 0.55; }
   .metric .v { color: var(--accent); font-weight: 500; }
+  .metric .v.amber { color: var(--amber); }
 
   /* ---- input ---- */
   .input-area {
@@ -190,10 +283,11 @@
     border-radius: 6px;
     padding: 9px 16px;
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, background 0.15s;
   }
   button:hover { opacity: 0.9; }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.rest-mode { background: var(--amber); }
 
   /* ---- footer ---- */
   footer {
@@ -216,23 +310,38 @@
 <body>
   <div class="shell">
     <header>
-      <h1>llm-demo &mdash; token streaming</h1>
-      <p class="subtitle">Type a prompt. Tokens stream back from OpenAI in real time over SSE.</p>
+      <h1>llm-demo &mdash; SSE vs REST</h1>
+      <p class="subtitle">Compare token streaming (SSE) against a blocking REST response from OpenAI.</p>
     </header>
+
+    <!-- Mode toggle -->
+    <div class="mode-toggle">
+      <button class="mode-btn active-sse" id="btnSse">⚡ SSE Streaming</button>
+      <button class="mode-btn" id="btnRest">⏳ REST (Blocking)</button>
+    </div>
+    <p class="mode-desc" id="modeDesc">Tokens arrive progressively — you see the model "think" in real time.</p>
 
     <div class="terminal">
       <div class="titlebar">
         <span class="dot red"></span>
         <span class="dot yellow"></span>
         <span class="dot green"></span>
-        <span class="label">/api/chat &mdash; text/event-stream</span>
+        <span class="label" id="endpointLabel">/api/chat &mdash; text/event-stream</span>
         <span class="status ready" id="status">
           <span class="status-dot"></span>
           <span id="statusText">ready</span>
         </span>
       </div>
 
+      <!-- SSE output (shown in SSE mode) -->
       <div class="output" id="output"><span class="placeholder">Awaiting input&hellip;</span></div>
+
+      <!-- REST spinner (shown while REST request is in-flight) -->
+      <div class="spinner-wrap" id="spinnerWrap">
+        <div class="spinner"></div>
+        <div class="spinner-label">Waiting for full response&hellip;</div>
+        <div class="spinner-elapsed" id="spinnerElapsed"></div>
+      </div>
 
       <div class="metrics" id="metrics">
         <div class="metric"><span class="k">ttfb</span> <span class="v" id="mTtfb">&ndash;</span></div>
@@ -257,27 +366,87 @@
   </div>
 
 <script>
-  // Relative URL so this works behind CloudFront (S3 default origin + ALB /api/* origin) with no CORS.
-  const API_URL = '/api/chat';
+  // Relative paths — served behind the same origin as the BFF, which relays to the LLM backend.
+  const SSE_URL  = '/api/chat';
+  const REST_URL = '/api/chat/rest';
 
-  const output = document.getElementById('output');
-  const input = document.getElementById('input');
-  const sendBtn = document.getElementById('send');
-  const statusEl = document.getElementById('status');
-  const statusText = document.getElementById('statusText');
-  const metrics = document.getElementById('metrics');
-  const mTtfb = document.getElementById('mTtfb');
-  const mTotal = document.getElementById('mTotal');
-  const mTokens = document.getElementById('mTokens');
+  const output       = document.getElementById('output');
+  const spinnerWrap  = document.getElementById('spinnerWrap');
+  const spinnerElapsed = document.getElementById('spinnerElapsed');
+  const input        = document.getElementById('input');
+  const sendBtn      = document.getElementById('send');
+  const statusEl     = document.getElementById('status');
+  const statusText   = document.getElementById('statusText');
+  const metrics      = document.getElementById('metrics');
+  const mTtfb        = document.getElementById('mTtfb');
+  const mTotal       = document.getElementById('mTotal');
+  const mTokens      = document.getElementById('mTokens');
+  const btnSse       = document.getElementById('btnSse');
+  const btnRest      = document.getElementById('btnRest');
+  const modeDesc     = document.getElementById('modeDesc');
+  const endpointLabel = document.getElementById('endpointLabel');
 
-  let streaming = false;
+  let mode      = 'sse';  // 'sse' | 'rest'
+  let busy      = false;
+  let elapsedTimer = null;
 
+  // ---- mode toggle ----
+  const MODE_CONFIG = {
+    sse: {
+      desc: 'Tokens arrive progressively — you see the model "think" in real time.',
+      endpoint: '/api/chat — text/event-stream',
+      btnActive: 'active-sse',
+    },
+    rest: {
+      desc: 'The request blocks until generation completes, then the full answer appears at once.',
+      endpoint: '/api/chat/rest — application/json',
+      btnActive: 'active-rest',
+    },
+  };
+
+  function setMode(m) {
+    mode = m;
+    const cfg = MODE_CONFIG[m];
+
+    btnSse.className  = 'mode-btn' + (m === 'sse'  ? ' active-sse'  : '');
+    btnRest.className = 'mode-btn' + (m === 'rest' ? ' active-rest' : '');
+    modeDesc.textContent = cfg.desc;
+    endpointLabel.textContent = cfg.endpoint;
+    sendBtn.className = m === 'rest' ? 'rest-mode' : '';
+
+    // Reset display to output panel
+    output.style.display = '';
+    spinnerWrap.classList.remove('visible');
+
+    resetOutput();
+  }
+
+  btnSse.addEventListener('click',  () => { if (!busy) setMode('sse');  });
+  btnRest.addEventListener('click', () => { if (!busy) setMode('rest'); });
+
+  // ---- helpers ----
   function setStatus(state, text) {
     statusEl.className = 'status ' + state;
     statusText.textContent = text;
   }
 
-  // auto-grow textarea
+  function resetOutput() {
+    output.innerHTML = '<span class="placeholder">Awaiting input…</span>';
+    metrics.classList.remove('visible');
+    mTtfb.textContent   = '–';
+    mTotal.textContent  = '–';
+    mTokens.textContent = '–';
+    // Restore accent colour for SSE mode; will be overridden in REST mode
+    document.querySelectorAll('.metric .v').forEach(el => el.classList.remove('amber'));
+  }
+
+  function makeCursor() {
+    const c = document.createElement('span');
+    c.className = 'cursor';
+    return c;
+  }
+
+  // Auto-grow textarea
   input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 140) + 'px';
@@ -291,40 +460,49 @@
   });
   sendBtn.addEventListener('click', submit);
 
-  function makeCursor() {
-    const c = document.createElement('span');
-    c.className = 'cursor';
-    return c;
-  }
-
+  // ---- submit dispatcher ----
   async function submit() {
-    if (streaming) return;
+    if (busy) return;
     const message = input.value.trim();
     if (!message) return;
 
-    streaming = true;
+    busy = true;
     sendBtn.disabled = true;
     input.value = '';
     input.style.height = 'auto';
 
-    // reset output
+    if (mode === 'sse') {
+      await submitSse(message);
+    } else {
+      await submitRest(message);
+    }
+
+    busy = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+
+  // ---- SSE mode (unchanged logic) ----
+  async function submitSse(message) {
+    output.style.display = '';
+    spinnerWrap.classList.remove('visible');
     output.textContent = '';
     const cursor = makeCursor();
     output.appendChild(cursor);
 
     metrics.classList.remove('visible');
-    mTtfb.textContent = '–';
-    mTotal.textContent = '–';
+    mTtfb.textContent   = '–';
+    mTotal.textContent  = '–';
     mTokens.textContent = '–';
 
     setStatus('connecting', 'connecting…');
 
     const started = performance.now();
     let firstTokenAt = null;
-    let tokenCount = 0;
+    let tokenCount   = 0;
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(SSE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message })
@@ -334,9 +512,9 @@
         throw new Error('HTTP ' + response.status);
       }
 
-      const reader = response.body.getReader();
+      const reader  = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer    = '';
       let eventType = null;
 
       setStatus('streaming', 'streaming…');
@@ -347,7 +525,6 @@
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Split into complete lines; keep the trailing partial line buffered.
         let nlIndex;
         while ((nlIndex = buffer.indexOf('\n')) !== -1) {
           const line = buffer.slice(0, nlIndex).replace(/\r$/, '');
@@ -370,7 +547,7 @@
               try {
                 text = JSON.parse(data).content;
               } catch (_) {
-                text = data; // fallback if a raw string ever comes through
+                text = data;
               }
               tokenCount++;
               cursor.remove();
@@ -385,13 +562,12 @@
               setStatus('done', 'done');
             }
 
-            eventType = null; // reset after each data line
+            eventType = null;
           }
         }
       }
 
       if (statusEl.classList.contains('streaming')) {
-        // stream ended without an explicit done event
         cursor.remove();
         const total = (performance.now() - started) / 1000;
         mTotal.textContent = total.toFixed(2) + ' s';
@@ -402,13 +578,84 @@
       if (c) c.remove();
       output.appendChild(document.createTextNode('\n\n[error] ' + err.message));
       setStatus('error', 'error');
-    } finally {
-      streaming = false;
-      sendBtn.disabled = false;
-      input.focus();
     }
   }
 
+  // ---- REST mode (new blocking path) ----
+  async function submitRest(message) {
+    // Hide text output, show spinner
+    output.style.display = 'none';
+    spinnerWrap.classList.add('visible');
+    spinnerElapsed.textContent = '';
+
+    metrics.classList.remove('visible');
+    mTtfb.textContent   = '—';   // em-dash: N/A for REST
+    mTotal.textContent  = '–';
+    mTokens.textContent = '–';
+
+    setStatus('waiting', 'waiting…');
+
+    const started = performance.now();
+
+    // Tick the elapsed display while waiting
+    elapsedTimer = setInterval(() => {
+      const s = ((performance.now() - started) / 1000).toFixed(1);
+      spinnerElapsed.textContent = s + ' s elapsed…';
+    }, 200);
+
+    try {
+      const response = await fetch(REST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+
+      clearInterval(elapsedTimer);
+
+      if (!response.ok) {
+        // The BFF returns a JSON { content } body on errors too (e.g. 504 on upstream
+        // timeout) — show that message instead of a bare status code.
+        let msg = 'HTTP ' + response.status;
+        try {
+          const body = await response.json();
+          if (body && body.content) msg = body.content;
+        } catch (_) { /* non-JSON error body; keep the status code */ }
+        throw new Error(msg);
+      }
+
+      const { content } = await response.json();
+      const total = (performance.now() - started) / 1000;
+
+      // Switch back to text output, show the full response at once
+      spinnerWrap.classList.remove('visible');
+      output.style.display = '';
+      output.textContent = content;
+      output.scrollTop = 0;
+
+      // Metrics: TTFB is N/A; tokens estimated by whitespace split
+      const tokenEst = content.trim().split(/\s+/).length;
+      mTotal.textContent  = total.toFixed(2) + ' s';
+      mTokens.textContent = '~' + tokenEst;  // ~ prefix = estimate
+
+      // Colour total/tokens amber to signal REST mode
+      document.getElementById('mTotal').classList.add('amber');
+      document.getElementById('mTokens').classList.add('amber');
+      // TTFB label: show N/A in muted style
+      mTtfb.textContent = '—';
+
+      metrics.classList.add('visible');
+      setStatus('done', 'done');
+    } catch (err) {
+      clearInterval(elapsedTimer);
+      spinnerWrap.classList.remove('visible');
+      output.style.display = '';
+      output.textContent = '[error] ' + err.message;
+      setStatus('error', 'error');
+    }
+  }
+
+  // Initialise
+  setMode('sse');
   input.focus();
 </script>
 </body>

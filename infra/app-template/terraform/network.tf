@@ -78,16 +78,18 @@ resource "aws_security_group" "alb" {
   tags = { Name = "${var.app_name}-alb-sg" }
 }
 
-# ECS tasks: ingress on 8080 only from the ALB SG.
+# ECS tasks: ingress on the bff port (8081) only from the ALB SG.
+# The backend's 8080 needs no rule — same-task container-to-container traffic uses
+# loopback and is not filtered by security groups.
 resource "aws_security_group" "ecs" {
   name        = "${var.app_name}-ecs-sg"
   description = "ECS task ingress from ALB only"
   vpc_id      = aws_vpc.this.id
 
   ingress {
-    description     = "App port from ALB"
-    from_port       = 8080
-    to_port         = 8080
+    description     = "BFF port from ALB"
+    from_port       = 8081
+    to_port         = 8081
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }

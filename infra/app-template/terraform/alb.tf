@@ -13,8 +13,12 @@ resource "aws_lb" "this" {
 }
 
 resource "aws_lb_target_group" "this" {
-  name        = "${var.app_name}-tg"
-  port        = 8080
+  # Use name_prefix (not name) so that when an immutable attribute like `port` changes and the
+  # target group must be replaced, the new TG can be created (with a fresh generated name) while
+  # the old one is still attached to the listener. Paired with create_before_destroy below, this
+  # avoids the "ResourceInUse ... in use by a listener or a rule" deadlock.
+  name_prefix = "llmtg-"
+  port        = 8081
   protocol    = "HTTP"
   vpc_id      = aws_vpc.this.id
   target_type = "ip"
@@ -28,6 +32,11 @@ resource "aws_lb_target_group" "this" {
     timeout             = 5
     healthy_threshold   = 2
     unhealthy_threshold = 3
+  }
+
+  # Create the replacement TG, repoint the listener to it, then destroy the old one.
+  lifecycle {
+    create_before_destroy = true
   }
 
   tags = { Name = "${var.app_name}-tg" }

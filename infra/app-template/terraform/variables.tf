@@ -23,15 +23,15 @@ variable "openai_api_key" {
 }
 
 variable "container_cpu" {
-  description = "Fargate task CPU units (256 = 0.25 vCPU)."
+  description = "Fargate task CPU units (256 = 0.25 vCPU). Sized for two JVMs (backend + bff) in one task."
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "container_memory" {
-  description = "Fargate task memory in MiB."
+  description = "Fargate task memory in MiB. Sized for two JVMs (backend + bff) in one task."
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "desired_count" {

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @RestController
 @RequestMapping("/api")
@@ -29,6 +30,10 @@ public class ChatController {
     public record TokenChunk(String content) {
     }
 
+    /** Full response payload returned by the blocking REST endpoint. */
+    public record FullResponse(String content) {
+    }
+
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Object>> chat(@RequestBody ChatRequest request) {
 
@@ -47,5 +52,18 @@ public class ChatController {
 
         // concat (not merge) guarantees [DONE] arrives after all tokens
         return Flux.concat(tokenStream, doneEvent);
+    }
+
+    /**
+     * Blocking REST endpoint: collects the entire LLM response server-side, then returns it as a
+     * single {@code application/json} payload {@code {"content":"..."}}.
+     *
+     * <p>The browser receives nothing until generation completes — making the wait viscerally
+     * different from the SSE streaming endpoint above.
+     */
+    @PostMapping("/chat/rest")
+    public Mono<FullResponse> chatRest(@RequestBody ChatRequest request) {
+        return openAiService.getFullResponse(request.message())
+                .map(FullResponse::new);
     }
 }

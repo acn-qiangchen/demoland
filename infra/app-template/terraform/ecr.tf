@@ -9,3 +9,15 @@ resource "aws_ecr_repository" "this" {
 
   tags = { Name = "${var.app_name}-ecr" }
 }
+
+resource "aws_ecr_repository" "bff" {
+  name                 = "${var.app_name}-bff"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = { Name = "${var.app_name}-bff-ecr" }
+}
