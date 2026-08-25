@@ -33,6 +33,7 @@ env:
   BACKEND_DIR: apps/llm-demo/backend
   BFF_DIR: apps/llm-demo/bff
   FRONTEND_FILE: apps/llm-demo/frontend/index.html
+  ARCH_FILE: apps/llm-demo/frontend/architecture.html
   TF_LOCK_TABLE: demoland-tflock
   # Resolved in the "Resolve deploy inputs" step below.
   # Workflow-level env cannot use expressions, so we set the final values there.
@@ -214,6 +215,8 @@ jobs:
         run: |
           set -euo pipefail
           aws s3 cp "$FRONTEND_FILE" "s3://$S3_BUCKET/index.html" \
+            --content-type "text/html" --cache-control "no-cache"
+          aws s3 cp "$ARCH_FILE" "s3://$S3_BUCKET/architecture.html" \
             --content-type "text/html" --cache-control "no-cache"
           aws cloudfront create-invalidation --distribution-id "$CF_DIST_ID" --paths "/*"
 

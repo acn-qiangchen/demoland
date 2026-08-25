@@ -305,6 +305,15 @@
     border-radius: 5px;
     padding: 4px 9px;
   }
+  a.tag.arch {
+    color: var(--accent);
+    opacity: 0.9;
+    text-decoration: none;
+    border-color: rgba(79, 142, 247, 0.4);
+    background: rgba(79, 142, 247, 0.1);
+    transition: opacity 0.15s;
+  }
+  a.tag.arch:hover { opacity: 1; }
 </style>
 </head>
 <body>
@@ -362,6 +371,7 @@
       <span class="tag">WebFlux SSE</span>
       <span class="tag">gpt-4o</span>
       <span class="tag">Vanilla JS</span>
+      <a class="tag arch" href="architecture.html">🗺 アーキテクチャ &rarr;</a>
     </footer>
   </div>
 

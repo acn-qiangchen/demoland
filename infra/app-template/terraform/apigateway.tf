@@ -90,10 +90,12 @@ resource "aws_api_gateway_integration" "chat_rest" {
   connection_type         = "INTERNET"
   passthrough_behavior    = "WHEN_NO_MATCH"
 
-  # STREAM only to lift the 29s cap (a long blocking LLM call exceeds it); the body is
-  # still a single JSON payload — REST semantics are unchanged.
-  response_transfer_mode = "STREAM"
-  timeout_milliseconds   = 900000
+  # BUFFERED (the default) — classic REST semantics: API Gateway buffers the whole JSON
+  # response before returning it, which keeps caching / body transforms / clean error status
+  # available. Trade-off: the integration timeout is capped at 29s, so a blocking LLM answer
+  # that runs longer than this will 504. (The SSE integration above uses STREAM to avoid that.)
+  response_transfer_mode = "BUFFERED"
+  timeout_milliseconds   = 29000
 
   request_parameters = {
     "integration.request.header.X-Origin-Verify" = "'${random_password.origin_verify.result}'"
