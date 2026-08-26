@@ -2,11 +2,6 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# CloudFront's managed prefix list — used to restrict ALB ingress to CloudFront edge IPs only.
-data "aws_ec2_managed_prefix_list" "cloudfront" {
-  name = "com.amazonaws.global.cloudfront.origin-facing"
-}
-
 locals {
   # Two public subnets in two AZs (ALB requires >= 2 AZs).
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
@@ -54,18 +49,20 @@ resource "aws_route_table_association" "public" {
 
 # ---- Security groups ----
 
-# ALB: ingress on 80 only from CloudFront's managed prefix list.
+# ALB: ingress on 80 open to the internet. API Gateway's integration egress has no stable
+# prefix list to scope to, so the X-Origin-Verify listener rule (not the SG) is the real
+# access control — direct hits without the secret header get a 403 from the default action.
 resource "aws_security_group" "alb" {
   name        = "${var.app_name}-alb-sg"
-  description = "ALB ingress from CloudFront only"
+  description = "ALB ingress on 80 (access gated by X-Origin-Verify listener rule)"
   vpc_id      = aws_vpc.this.id
 
   ingress {
-    description     = "HTTP from CloudFront"
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront.id]
+    description = "HTTP from anywhere (secret header enforced at listener rule)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {

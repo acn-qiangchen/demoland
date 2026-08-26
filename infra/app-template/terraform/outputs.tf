@@ -32,3 +32,8 @@ output "s3_bucket_name" {
   description = "S3 bucket holding the static frontend."
   value       = aws_s3_bucket.frontend.id
 }
+
+output "api_gateway_invoke_url" {
+  description = "API Gateway stage invoke URL (for manual testing; CloudFront references the API internally)."
+  value       = aws_api_gateway_stage.this.invoke_url
+}

@@ -25,14 +25,14 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
 }
 
 locals {
-  s3_origin_id  = "${var.app_name}-s3"
-  alb_origin_id = "${var.app_name}-alb"
+  s3_origin_id    = "${var.app_name}-s3"
+  apigw_origin_id = "${var.app_name}-apigw"
 }
 
 resource "aws_cloudfront_distribution" "this" {
   enabled             = true
   default_root_object = "index.html"
-  comment             = "${var.app_name} — static frontend + /api/* to ALB"
+  comment             = "${var.app_name} — static frontend + /api/* to API Gateway"
   price_class         = "PriceClass_100"
 
   # Origin 1: private S3 bucket (static frontend)
@@ -42,15 +42,17 @@ resource "aws_cloudfront_distribution" "this" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
-  # Origin 2: ALB (Spring Boot API). CloudFront -> ALB over HTTP.
+  # Origin 2: API Gateway (REST, Regional). CloudFront -> execute-api over HTTPS.
+  # origin_path prepends the stage so viewer /api/chat -> /prod/api/chat at the API.
   origin {
-    domain_name = aws_lb.this.dns_name
-    origin_id   = local.alb_origin_id
+    domain_name = "${aws_api_gateway_rest_api.this.id}.execute-api.${var.aws_region}.amazonaws.com"
+    origin_id   = local.apigw_origin_id
+    origin_path = "/${aws_api_gateway_stage.this.stage_name}"
 
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
       # CloudFront's origin read timeout maxes at 60s without a service-quota increase.
       # Fine for typical OpenAI first-token latency; raise the quota if you see truncated streams.
@@ -69,18 +71,20 @@ resource "aws_cloudfront_distribution" "this" {
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   }
 
-  # /api/* -> ALB, caching disabled, all methods (incl. POST) forwarded.
+  # /api/* -> API Gateway, caching disabled, all methods (incl. POST) forwarded.
   ordered_cache_behavior {
     path_pattern           = "/api/*"
-    target_origin_id       = local.alb_origin_id
+    target_origin_id       = local.apigw_origin_id
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods         = ["GET", "HEAD"]
 
     # AWS managed "CachingDisabled" policy.
     cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    # AWS managed "AllViewer" origin request policy — forwards all headers/cookies/query strings.
-    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+    # AWS managed "AllViewerExceptHostHeader" origin request policy — forwards everything
+    # except the viewer Host header. Forwarding the viewer Host to execute-api returns 403,
+    # so the Host must be dropped (CloudFront then sends the execute-api Host).
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
   }
 
   restrictions {
