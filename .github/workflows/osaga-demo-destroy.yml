@@ -1,0 +1,92 @@
+name: osaga-demo destroy
+
+# Manual only. Tears down everything the deploy workflow created.
+# Authenticates to AWS via GitHub OIDC — no long-lived access keys.
+on:
+  workflow_dispatch:
+    inputs:
+      aws_role_arn:
+        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
+        required: true
+      aws_region:
+        description: "AWS region"
+        required: true
+        default: "us-east-1"
+
+# id-token: write is required for the runner to request an OIDC token from GitHub.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  APP_NAME: osaga-demo
+  TF_DIR: infra/osaga-demo/terraform
+  TF_LOCK_TABLE: demoland-tflock
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: osaga-demo-destroy
+
+      - name: Resolve account ID and state bucket
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          echo "TF_STATE_BUCKET=demoland-tfstate-${ACCOUNT_ID}" >> "$GITHUB_ENV"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=${APP_NAME}/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_LOCK_TABLE"
+
+      - name: Empty the S3 buckets
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          for OUT in input_bucket_name output_bucket_name; do
+            BUCKET="$(terraform output -raw "$OUT" 2>/dev/null || true)"
+            if [ -n "$BUCKET" ]; then
+              echo "Emptying s3://$BUCKET"
+              aws s3 rm "s3://$BUCKET" --recursive || true
+            else
+              echo "No bucket for $OUT in state; skipping."
+            fi
+          done
+
+      - name: Terraform destroy
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform destroy -auto-approve \
+            -var "aws_region=$AWS_REGION"
+
+      - name: Job summary
+        run: |
+          {
+            echo "## osaga-demo destroyed :wastebasket:"
+            echo ""
+            echo "All app resources (ECS cluster + task def, Step Functions, EventBridge rule,"
+            echo "ECR, both S3 buckets, VPC, IAM roles, logs) have been removed."
+            echo ""
+            echo "The Terraform state bucket and DynamoDB lock table are left in place for reuse."
+          } >> "$GITHUB_STEP_SUMMARY"
