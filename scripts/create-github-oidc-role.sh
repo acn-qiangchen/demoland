@@ -112,7 +112,7 @@ cat >"${WORKDIR}/perms.json" <<'JSON'
       "Action": [
         "ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "apigateway:*",
         "s3:*", "cloudfront:*", "secretsmanager:*", "logs:*", "dynamodb:*",
-        "application-autoscaling:*", "sts:GetCallerIdentity"
+        "application-autoscaling:*", "states:*", "events:*", "sts:GetCallerIdentity"
       ],
       "Resource": "*"
     },

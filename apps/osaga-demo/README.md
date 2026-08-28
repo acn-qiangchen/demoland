@@ -93,14 +93,15 @@ docker build -t osaga-demo .
 
 ## Deploy to AWS
 
-> **One-time bootstrap re-apply (required).** The shared deploy role gained
+> **One-time role update (required).** The shared deploy role gained
 > `states:*` / `events:*` permissions for this demo. A human must re-run
-> `infra/bootstrap` once (`terraform apply`) before the first osaga-demo deploy,
+> [`scripts/create-github-oidc-role.sh`](../../scripts/create-github-oidc-role.sh) once
+> (it idempotently overwrites the role's inline policy) before the first osaga-demo deploy,
 > otherwise Terraform can't create the Step Functions / EventBridge resources.
 
 1. Run the **osaga-demo deploy** GitHub Actions workflow (`workflow_dispatch`), passing the
-   IAM role ARN output by `infra/bootstrap`. The job summary prints the input/output bucket
-   names and the state machine ARN.
+   IAM role ARN printed by `scripts/create-github-oidc-role.sh`. The job summary prints the
+   input/output bucket names and the state machine ARN.
 2. Trigger the pipeline by uploading the sample file:
 
    ```bash
