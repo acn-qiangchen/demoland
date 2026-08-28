@@ -2,7 +2,7 @@
 
 A copy-paste guide to **run the streaming chat demo locally** and **deploy/tear it down on AWS**.
 For the architecture and why things are wired this way, see
-[`apps/llm-demo/README.md`](apps/llm-demo/README.md) and [`llm-demo-architecture.md`](llm-demo-architecture.md).
+[`README.md`](README.md) and [`llm-demo-architecture.md`](llm-demo-architecture.md).
 
 You need an **OpenAI API key** (starts with `sk-...`) for both paths.
 
@@ -110,9 +110,9 @@ never type AWS access keys into a workflow form (which would otherwise leak in p
 3. **Bootstrap the OIDC role** — run the script and answer the prompts (it asks for your AWS
    account number + access key/secret each time; nothing is written to disk):
    ```bash
-   ./infra/bootstrap/create-github-oidc-role.sh   # prints the role ARN at the end
+   ./scripts/create-github-oidc-role.sh   # prints the role ARN at the end
    ```
-   (Terraform is available as an alternative — see [`infra/bootstrap/README.md`](infra/bootstrap/README.md).)
+   Re-runnable (idempotent): run it again any time to update the role's permissions.
 
 ### 2. Deploy
 
@@ -159,7 +159,7 @@ bucket** (`demoland-tfstate-<account_id>`) and lock table are intentionally kept
 | Page loads but chat 502s right after deploy | ECS task not healthy yet — wait 1–2 min, then retry.                               |
 | Stream cuts off around ~60s                | CloudFront origin read timeout caps at 60s without a quota increase (see infra comments). |
 | Deploy fails on state bucket / lock        | Another deploy is mid-run, or the OIDC role lacks S3/DynamoDB perms.                |
-| `configure-aws-credentials` fails to assume role | Wrong `aws_role_arn`, or the bootstrap trust policy doesn't match this repo (`github_owner`/`github_repo`). |
+| `configure-aws-credentials` fails to assume role | Wrong `aws_role_arn`, or the role's trust policy doesn't match this repo (`GH_OWNER`/`GH_REPO` in the script). |
 
 ## Cost note
 
@@ -168,7 +168,8 @@ While up: ~1 Fargate task + 1 ALB + CloudFront ≈ a few USD/day. Run **llm-demo
 ## Security note
 
 The workflows use **GitHub OIDC**: no long-lived AWS access keys exist anywhere — the runner assumes
-the bootstrapped IAM role with a short-lived token, and the only workflow inputs (`aws_role_arn`,
-`aws_region`, `image_tag`) are non-sensitive. The OpenAI key lives only in a GitHub repo secret →
-AWS Secrets Manager, never in logs or frontend code. The bootstrap role's IAM policy is intentionally
-broad for the demo; scope it down in `infra/bootstrap/main.tf` for real use.
+the IAM role (created by `scripts/create-github-oidc-role.sh`) with a short-lived token, and the only
+workflow inputs (`aws_role_arn`, `aws_region`, `image_tag`) are non-sensitive. The OpenAI key lives
+only in a GitHub repo secret → AWS Secrets Manager, never in logs or frontend code. The role's IAM
+policy is intentionally broad for the demo; scope it down in `scripts/create-github-oidc-role.sh` for
+real use.

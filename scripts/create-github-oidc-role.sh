@@ -13,7 +13,7 @@
 # Requirements: awscli v2, and permission to manage IAM (create OIDC provider + role).
 #
 # Usage:
-#   ./infra/bootstrap/create-github-oidc-role.sh
+#   ./scripts/create-github-oidc-role.sh
 # Then paste the printed role ARN into the `aws_role_arn` input of the workflows.
 
 set -euo pipefail
@@ -112,7 +112,7 @@ cat >"${WORKDIR}/perms.json" <<'JSON'
       "Action": [
         "ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "apigateway:*",
         "s3:*", "cloudfront:*", "secretsmanager:*", "logs:*", "dynamodb:*",
-        "application-autoscaling:*", "sts:GetCallerIdentity"
+        "application-autoscaling:*", "states:*", "events:*", "sts:GetCallerIdentity"
       ],
       "Resource": "*"
     },

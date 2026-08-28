@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       aws_role_arn:
-        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
+        description: "ARN of the IAM role to assume via OIDC (created by scripts/create-github-oidc-role.sh). Not sensitive."
         required: true
       aws_region:
         description: "AWS region"
@@ -20,7 +20,7 @@ permissions:
 
 env:
   APP_NAME: llm-demo
-  TF_DIR: infra/app-template/terraform
+  TF_DIR: infra/llm-demo/terraform
   TF_LOCK_TABLE: demoland-tflock
 
 jobs:

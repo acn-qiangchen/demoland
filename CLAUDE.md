@@ -4,23 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-Demoland is a monorepo intended to host multiple independent demo apps plus the shared
-infrastructure to deploy them. Each demo lives under `apps/<name>/` with its own container
-and metadata; shared infra (VPC, cluster, ingress, DNS, monitoring) lives under `infra/` and
-`platform/`.
+Demoland is a monorepo hosting multiple independent demo apps plus the infrastructure to
+deploy them. Each demo is self-contained: application code under `apps/<name>/`, its own
+Terraform under `infra/<name>/terraform/`, and its own GitHub Actions workflows (see the
+Repository organization policy below). A shared platform layer (VPC, cluster, ingress, DNS,
+monitoring under `platform/`) is part of the *target* design but is not built yet.
 
-**Important — this is an early-stage scaffold.** The README, CONTRIBUTING.md, and apps/README.md
-describe the *target* architecture, but most of it does not exist yet:
-- `docs/`, `scripts/`, `infra/`, `platform/`, and `.github/` are empty directories.
-- The helper scripts referenced everywhere (`scripts/new-demo.sh`, `scripts/deploy.sh`,
-  `scripts/destroy.sh`) have **not been written yet**.
-- No CI/CD workflows, Terraform, or Dockerfiles exist yet.
-- The only concrete artifacts are: the docs, `apps/_template/app.json`, and
-  `llm-demo-architecture.md`.
+**State of the repo.** Two demos are fully built out and are the reference implementations
+for the policy below: `llm-demo` (a web app — Spring Boot backend + bff + static frontend on
+CloudFront/API Gateway/ALB/ECS) and `osaga-demo` (an event-driven batch pipeline — S3 →
+EventBridge → Step Functions → ECS Fargate + Spring Batch). Each has real application code,
+its own Terraform, and its own deploy/destroy workflows.
 
-When asked to "add a demo" or "deploy", assume you are likely *building the missing
-scaffolding itself*, not running existing tooling. Verify a script/file exists before
-telling the user to run it.
+Parts of the *target* architecture in README / CONTRIBUTING.md / apps/README.md are still
+aspirational and do **not** exist yet:
+- `platform/` and `docs/` are essentially empty; there is no shared cluster/ingress/DNS —
+  each demo deploys standalone to ECS Fargate.
+- The generic helper scripts (`scripts/new-demo.sh`, `scripts/deploy.sh`, `scripts/destroy.sh`)
+  have **not been written**. The only real script is `scripts/create-github-oidc-role.sh`.
+
+When asked to "add a demo", copy an existing demo of the same shape (web → `llm-demo`,
+batch → `osaga-demo`) rather than assuming generic scaffolding tooling exists. Verify a
+script/file exists before telling the user to run it.
+
+## Repository organization policy
+
+Every demo is **self-contained and consistently named**. A single `<name>` (e.g. `llm-demo`,
+`osaga-demo`) is used verbatim across three parallel trees, and a demo owns everything under them:
+
+| Tree  | Path                                                          | Holds                                                                       |
+| ----- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| App   | `apps/<name>/`                                               | source, `app.json`, `README.md`, `Dockerfile`, `.dockerignore`, tests, sample data |
+| Infra | `infra/<name>/terraform/`                                    | that demo's **own** self-contained Terraform module                         |
+| CI/CD | `.github/workflows/<name>-deploy.yml` + `<name>-destroy.yml` | manual (`workflow_dispatch`) deploy / teardown                              |
+
+Rules:
+- **Per-demo, never shared.** `infra/` has one folder per demo (`infra/llm-demo/`,
+  `infra/osaga-demo/`) — do not put one demo's infra in another's folder or in a shared module,
+  and there is no shared app-infra template. Same for workflows: one deploy + one destroy per demo.
+- **The name is the key.** `<name>` is the app dir, the infra dir, the workflow filename prefix,
+  the Terraform `app_name` (default, which prefixes every resource), the ECR repo name, and the
+  Terraform state key (`<name>/terraform.tfstate` in the shared `demoland-tfstate-<account_id>` bucket).
+- **Demo-specific docs live with the demo.** Anything about one demo (quickstart, architecture
+  spec, coding notes) goes under `apps/<name>/`, never at the repo root. The root keeps only
+  repo-wide docs: `README.md`, `CLAUDE.md`, `CONTRIBUTING.md` (+ `apps/README.md` as the index).
+- **Cross-cutting infra is not per-demo.** The shared GitHub OIDC deploy role is managed by
+  `scripts/create-github-oidc-role.sh` (AWS CLI + shell, **no Terraform**). The shared Terraform
+  state backend (S3 `demoland-tfstate-<account_id>` + DynamoDB `demoland-tflock`) is created
+  idempotently by each deploy workflow, not checked in.
+- **Demos may differ in shape, but keep the contract.** Web demos (`llm-demo`: backend + bff +
+  frontend) and batch demos (`osaga-demo`: single module, no server) look different, but each
+  carries a complete `app.json` — keep every field for schema consistency even when a value is
+  N/A (batch jobs set `port` / `healthEndpoint` to `null` and note it in their README).
 
 ## Conventions established so far
 
@@ -41,7 +76,7 @@ apps/<name>/
 ```
 
 ### LLM streaming demo spec
-`llm-demo-architecture.md` is a **self-contained reproduction spec** for a token-streaming
+`apps/llm-demo/llm-demo-architecture.md` is a **self-contained reproduction spec** for a token-streaming
 chat demo. If asked to build "the LLM demo", follow that file — it is authoritative. Key
 constraints baked into it:
 - Backend: Spring Boot 3.4 **WebFlux** (reactive) + **Spring AI 1.0.0** OpenAI starter,
