@@ -1,16 +1,16 @@
 name: osaga-demo deploy
 
 # Manual only (workflow_dispatch). Authenticates to AWS via GitHub OIDC — no long-lived
-# access keys. The workflow assumes an IAM role (bootstrapped once via infra/bootstrap/)
+# access keys. The workflow assumes an IAM role (created once via scripts/create-github-oidc-role.sh)
 # using a short-lived token, so no AWS secret ever appears in inputs, logs, or metadata.
 #
-# NOTE: infra/bootstrap must be re-applied by a human once before the first osaga-demo
-# deploy — it adds the states:* / events:* permissions this stack needs. See the app README.
+# NOTE: scripts/create-github-oidc-role.sh must be re-run by a human once before the first
+# osaga-demo deploy — it adds the states:* / events:* permissions this stack needs. See the app README.
 on:
   workflow_dispatch:
     inputs:
       aws_role_arn:
-        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
+        description: "ARN of the IAM role to assume via OIDC (created by scripts/create-github-oidc-role.sh). Not sensitive."
         required: true
       aws_region:
         description: "AWS region"

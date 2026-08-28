@@ -5,7 +5,7 @@ backend, which calls the OpenAI API with streaming enabled and pipes each token 
 browser as a Server-Sent Event (SSE). Tokens appear character-by-character in real time. A metrics
 strip shows time-to-first-byte, total time, and token count.
 
-Authoritative spec: [`llm-demo-architecture.md`](../../llm-demo-architecture.md).
+Authoritative spec: [`llm-demo-architecture.md`](llm-demo-architecture.md).
 
 ## Layout
 
@@ -60,9 +60,9 @@ Deployment is fully driven by GitHub Actions (manual `workflow_dispatch`) onto A
 - **AWS auth** → **GitHub OIDC**. The workflows assume an IAM role via a short-lived token; there
   are no static AWS access keys anywhere.
 
-Infra is Terraform in [`infra/app-template/terraform/`](../../infra/app-template/terraform/),
-parameterized by `app_name` (default `llm-demo`). The OIDC provider + deploy role are a one-time
-bootstrap in [`infra/bootstrap/`](../../infra/bootstrap/).
+Infra is Terraform in [`infra/llm-demo/terraform/`](../../infra/llm-demo/terraform/),
+parameterized by `app_name` (default `llm-demo`). The OIDC provider + deploy role are created once
+by [`scripts/create-github-oidc-role.sh`](../../scripts/create-github-oidc-role.sh).
 
 Workflows:
 - **`.github/workflows/llm-demo-deploy.yml`** — assumes the OIDC role, bootstraps TF state, builds +
@@ -70,4 +70,4 @@ Workflows:
 - **`.github/workflows/llm-demo-destroy.yml`** — tears everything down.
 
 Both take non-sensitive `aws_role_arn` / `aws_region` dispatch inputs (deploy also takes `image_tag`).
-Run `infra/bootstrap` once to create the role and get its ARN.
+Run `scripts/create-github-oidc-role.sh` once to create the role and get its ARN.

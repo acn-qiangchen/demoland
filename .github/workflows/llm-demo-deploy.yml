@@ -5,13 +5,13 @@ name: llm-demo deploy
 # would fail. Trigger this from the Actions tab and pass the role ARN explicitly.
 #
 # Authenticates to AWS via GitHub OIDC — no long-lived access keys. The workflow assumes an IAM
-# role (bootstrapped once via infra/bootstrap/) using a short-lived token, so no AWS secret ever
+# role (created once via scripts/create-github-oidc-role.sh) using a short-lived token, so no AWS secret ever
 # appears in inputs, logs, or run metadata.
 on:
   workflow_dispatch:
     inputs:
       aws_role_arn:
-        description: "ARN of the IAM role to assume via OIDC (output of infra/bootstrap). Not sensitive."
+        description: "ARN of the IAM role to assume via OIDC (created by scripts/create-github-oidc-role.sh). Not sensitive."
         required: true
       aws_region:
         description: "AWS region"
@@ -29,7 +29,7 @@ permissions:
 
 env:
   APP_NAME: llm-demo
-  TF_DIR: infra/app-template/terraform
+  TF_DIR: infra/llm-demo/terraform
   BACKEND_DIR: apps/llm-demo/backend
   BFF_DIR: apps/llm-demo/bff
   FRONTEND_FILE: apps/llm-demo/frontend/index.html
