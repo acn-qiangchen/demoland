@@ -1,0 +1,35 @@
+{
+  "name": "osaga-demo",
+  "description": "Orchestration-saga batch pipeline: an S3 upload emits an EventBridge event that triggers a Step Functions state machine, which runs an ECS Fargate Spring Batch task to transform the input CSV and write the result to an output bucket.",
+  "version": "0.1.0",
+  "maintainer": "qiang-chen",
+  "port": null,
+  "healthEndpoint": null,
+  "tags": ["batch", "s3", "stepfunctions", "saga", "etl"],
+  "env": [
+    {
+      "name": "INPUT_BUCKET",
+      "default": "",
+      "description": "S3 bucket holding the input CSV (passed as a RunTask override by Step Functions)"
+    },
+    {
+      "name": "INPUT_KEY",
+      "default": "",
+      "description": "S3 object key of the input CSV (from the S3 EventBridge event)"
+    },
+    {
+      "name": "OUTPUT_BUCKET",
+      "default": "",
+      "description": "S3 bucket to write the transformed CSV to"
+    },
+    {
+      "name": "OUTPUT_KEY",
+      "default": "",
+      "description": "S3 object key for the output CSV (defaults to processed/<input-filename> if unset)"
+    }
+  ],
+  "resources": {
+    "requests": { "cpu": "256m", "memory": "512Mi" },
+    "limits":   { "cpu": "512m", "memory": "1024Mi" }
+  }
+}

@@ -95,6 +95,10 @@ data "aws_iam_policy_document" "deploy" {
       "logs:*",
       "dynamodb:*",
       "application-autoscaling:*",
+      # Step Functions + EventBridge for the osaga-demo saga pipeline. Re-apply this
+      # bootstrap once after adding these before the first osaga-demo deploy.
+      "states:*",
+      "events:*",
       "sts:GetCallerIdentity",
     ]
     resources = ["*"]
