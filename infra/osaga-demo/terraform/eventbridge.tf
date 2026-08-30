@@ -28,9 +28,10 @@ resource "aws_cloudwatch_event_target" "start_saga" {
     input_paths = {
       bucket = "$.detail.bucket.name"
       key    = "$.detail.object.key"
+      time   = "$.time"
     }
     input_template = <<EOF
-{"inputBucket": <bucket>, "inputKey": <key>}
+{"inputBucket": <bucket>, "inputKey": <key>, "batchTimestamp": <time>, "appName": "osaga-demo"}
 EOF
   }
 }

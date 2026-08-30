@@ -35,6 +35,10 @@ resource "aws_sfn_state_machine" "this" {
                   { Name = "INPUT_KEY", "Value.$" = "$.inputKey" },
                   { Name = "OUTPUT_BUCKET", Value = aws_s3_bucket.output.bucket },
                 ]
+                # batch_timestamp / app_name reach the app as plain command-line args, appended
+                # to the Dockerfile ENTRYPOINT (ECS command → Docker CMD). Values come from the
+                # SFN input, so build the array with intrinsics via the .$ form.
+                "Command.$" = "States.Array(States.Format('--batchTimestamp={}', $.batchTimestamp), States.Format('--appName={}', $.appName))"
               }
             ]
           }

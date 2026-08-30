@@ -9,6 +9,14 @@ import org.springframework.batch.item.ItemProcessor;
  */
 public class RecordProcessor implements ItemProcessor<Record, Record> {
 
+    private final String batchTimestamp;
+    private final String appName;
+
+    public RecordProcessor(String batchTimestamp, String appName) {
+        this.batchTimestamp = batchTimestamp;
+        this.appName = appName;
+    }
+
     @Override
     public Record process(Record item) {
         Record out = new Record();
@@ -16,6 +24,8 @@ public class RecordProcessor implements ItemProcessor<Record, Record> {
         out.setName(item.getName() == null ? null : item.getName().toUpperCase());
         out.setValue(item.getValue());
         out.setProcessedAt(Instant.now().toString());
+        out.setBatchTimestamp(batchTimestamp);
+        out.setAppName(appName);
         return out;
     }
 }

@@ -26,7 +26,7 @@ public class BatchConfig {
 
     static final String JOB_NAME = "csvTransformJob";
     private static final String[] INPUT_FIELDS = {"id", "name", "value"};
-    private static final String OUTPUT_HEADER = "id,name,value,processed_at";
+    private static final String OUTPUT_HEADER = "id,name,value,processed_at,batch_timestamp,app_name";
 
     @Bean
     @StepScope
@@ -49,24 +49,28 @@ public class BatchConfig {
                 .resource(new FileSystemResource(outputFile))
                 .headerCallback(w -> w.write(OUTPUT_HEADER))
                 .delimited()
-                .names("id", "name", "value", "processedAt")
+                .names("id", "name", "value", "processedAt", "batchTimestamp", "appName")
                 .build();
     }
 
     @Bean
-    public RecordProcessor processor() {
-        return new RecordProcessor();
+    @StepScope
+    public RecordProcessor processor(
+            @Value("#{jobParameters['batchTimestamp']}") String batchTimestamp,
+            @Value("#{jobParameters['appName']}") String appName) {
+        return new RecordProcessor(batchTimestamp, appName);
     }
 
     @Bean
     public Step transformStep(JobRepository jobRepository,
                               PlatformTransactionManager txManager,
                               FlatFileItemReader<Record> reader,
+                              RecordProcessor processor,
                               FlatFileItemWriter<Record> writer) {
         return new StepBuilder("transformStep", jobRepository)
                 .<Record, Record>chunk(100, txManager)
                 .reader(reader)
-                .processor(processor())
+                .processor(processor)
                 .writer(writer)
                 .build();
     }
