@@ -43,9 +43,10 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
 
     private int exitCode = 0;
 
-    // Populated from command-line args in run(); threaded into launch().
+    // Populated from command-line args in run(); threaded into launch() / output-key resolution.
     private String batchTimestamp;
     private String appName;
+    private String outputFileName;
 
     public S3JobRunner(JobLauncher jobLauncher, Job csvTransformJob, JobProperties props) {
         this.jobLauncher = jobLauncher;
@@ -60,6 +61,9 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
             // passed EventBridge ($.time / literal) → Step Functions → ECS Command override → here.
             this.batchTimestamp = firstOption(args, "batchTimestamp");
             this.appName = firstOption(args, "appName");
+            // Optional: when present, names the processed output file (processed/<outputFileName>);
+            // when absent/blank, falls back to the input filename (unchanged behaviour).
+            this.outputFileName = firstOption(args, "outputFileName");
 
             boolean localMode = props.getInputBucket() == null || props.getInputBucket().isBlank();
             if (localMode) {
@@ -77,7 +81,7 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
 
     private void runLocal() throws Exception {
         String inputFile = props.getInputKey();
-        String outputFile = props.resolveOutputKey();
+        String outputFile = props.resolveOutputKey(outputFileName);
         log.info("Local mode: {} -> {}", inputFile, outputFile);
         launch(inputFile, outputFile);
     }
@@ -87,7 +91,7 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
         Path workDir = Files.createTempDirectory("osaga-");
         Path inputFile = workDir.resolve("input.csv");
         Path outputFile = workDir.resolve("output.csv");
-        String outputKey = props.resolveOutputKey();
+        String outputKey = props.resolveOutputKey(outputFileName);
         log.info("Processing s3://{}/{} -> s3://{}/{}",
                 props.getInputBucket(), props.getInputKey(), props.getOutputBucket(), outputKey);
 

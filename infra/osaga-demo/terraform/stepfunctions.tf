@@ -9,8 +9,28 @@ resource "aws_sfn_state_machine" "this" {
 
   definition = jsonencode({
     Comment = "osaga-demo: run the Spring Batch CSV transform on Fargate, waiting for completion."
-    StartAt = "RunEcsTask"
+    StartAt = "EnsureOutputFileName"
     States = {
+      # outputFileName is optional in the execution input. Normalise it to an empty string
+      # when absent so RunEcsTask can always reference $.outputFileName safely; the app
+      # treats a blank value as "not supplied" and keeps the default output naming.
+      EnsureOutputFileName = {
+        Type = "Choice"
+        Choices = [
+          {
+            Variable  = "$.outputFileName"
+            IsPresent = true
+            Next      = "RunEcsTask"
+          }
+        ]
+        Default = "DefaultOutputFileName"
+      }
+      DefaultOutputFileName = {
+        Type       = "Pass"
+        Result     = ""
+        ResultPath = "$.outputFileName"
+        Next       = "RunEcsTask"
+      }
       RunEcsTask = {
         Type     = "Task"
         Resource = "arn:aws:states:::ecs:runTask.sync"
@@ -35,10 +55,11 @@ resource "aws_sfn_state_machine" "this" {
                   { Name = "INPUT_KEY", "Value.$" = "$.inputKey" },
                   { Name = "OUTPUT_BUCKET", Value = aws_s3_bucket.output.bucket },
                 ]
-                # batch_timestamp / app_name reach the app as plain command-line args, appended
-                # to the Dockerfile ENTRYPOINT (ECS command → Docker CMD). Values come from the
-                # SFN input, so build the array with intrinsics via the .$ form.
-                "Command.$" = "States.Array(States.Format('--batchTimestamp={}', $.batchTimestamp), States.Format('--appName={}', $.appName))"
+                # batch_timestamp / app_name / outputFileName reach the app as plain command-line
+                # args, appended to the Dockerfile ENTRYPOINT (ECS command → Docker CMD). Values
+                # come from the SFN input, so build the array with intrinsics via the .$ form.
+                # outputFileName is normalised to "" upstream, so --outputFileName= is harmless.
+                "Command.$" = "States.Array(States.Format('--batchTimestamp={}', $.batchTimestamp), States.Format('--appName={}', $.appName), States.Format('--outputFileName={}', $.outputFileName))"
               }
             ]
           }

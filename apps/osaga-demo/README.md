@@ -81,16 +81,24 @@ The app uses AWS SDK v2, which picks up credentials from the ECS **task role** a
 Two parameters reach the app as **plain named command-line arguments** (not env vars), parsed
 manually from Spring Boot's `ApplicationArguments` in `S3JobRunner`:
 
-| Arg                       | Meaning                                                                                              |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `--batchTimestamp=<val>`  | Written as the `batch_timestamp` column; sourced from the EventBridge event `$.time`                 |
-| `--appName=<val>`         | Written as the `app_name` column; the literal `osaga-demo` from the EventBridge input template       |
+| Arg                        | Meaning                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `--batchTimestamp=<val>`   | Written as the `batch_timestamp` column; sourced from the EventBridge event `$.time`                 |
+| `--appName=<val>`          | Written as the `app_name` column; the literal `osaga-demo` from the EventBridge input template       |
+| `--outputFileName=<val>`   | **Optional.** Names the processed output object `processed/<val>`; when omitted/blank, the output keeps the input filename (`processed/<input-filename>`) |
 
 The flow is: EventBridge event → input transformer (`$.time` / literal) → Step Functions input
-JSON → ECS **`Command` override** (`--batchTimestamp=… --appName=…`, appended to the Dockerfile
-`ENTRYPOINT`) → `ApplicationArguments` → `JobParameters` → the writer columns. Both are
-**optional** — when omitted (e.g. local runs), `batch_timestamp` defaults to `Instant.now()`
-and `app_name` to `osaga-demo`.
+JSON → ECS **`Command` override** (`--batchTimestamp=… --appName=… --outputFileName=…`, appended
+to the Dockerfile `ENTRYPOINT`) → `ApplicationArguments` → `JobParameters` / output-key
+resolution. All three are **optional** — when omitted (e.g. local runs), `batch_timestamp`
+defaults to `Instant.now()`, `app_name` to `osaga-demo`, and the output filename to the input
+filename.
+
+`outputFileName` is not part of the S3 `Object Created` event, so the automated pipeline does
+not set it (output keeps the input filename). The state machine normalises a missing
+`outputFileName` to an empty string (a `Choice` → `Pass`), so it can be supplied by a manual
+Step Functions execution (or a customised EventBridge input template) without breaking the
+default S3-triggered path.
 
 ## Run locally
 
@@ -111,8 +119,10 @@ INPUT_KEY=sample-data/input.csv OUTPUT_KEY=/tmp/out.csv \
 cat /tmp/out.csv
 ```
 
-The `--batchTimestamp` / `--appName` args are optional locally — if omitted they default to
-the current time (`Instant.now()`) and `osaga-demo` respectively.
+The `--batchTimestamp` / `--appName` / `--outputFileName` args are all optional locally — if
+omitted they default to the current time (`Instant.now()`), `osaga-demo`, and the input
+filename respectively. To name the output object explicitly, add e.g.
+`--outputFileName=result.csv` (writes `processed/result.csv` in S3 mode).
 
 Build the container (multi-stage, runs as non-root):
 
