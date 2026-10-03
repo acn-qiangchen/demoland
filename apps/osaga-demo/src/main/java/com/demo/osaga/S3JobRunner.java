@@ -2,6 +2,8 @@ package com.demo.osaga;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 import org.slf4j.Logger;
@@ -41,6 +43,11 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
 
     private int exitCode = 0;
 
+    // Populated from command-line args in run(); threaded into launch() / output-key resolution.
+    private String batchTimestamp;
+    private String appName;
+    private String outputFileName;
+
     public S3JobRunner(JobLauncher jobLauncher, Job csvTransformJob, JobProperties props) {
         this.jobLauncher = jobLauncher;
         this.csvTransformJob = csvTransformJob;
@@ -50,6 +57,14 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
     @Override
     public void run(ApplicationArguments args) {
         try {
+            // batch_timestamp / app_name arrive as plain named args (--batchTimestamp=… --appName=…),
+            // passed EventBridge ($.time / literal) → Step Functions → ECS Command override → here.
+            this.batchTimestamp = firstOption(args, "batchTimestamp");
+            this.appName = firstOption(args, "appName");
+            // Optional: when present, names the processed output file (processed/<outputFileName>);
+            // when absent/blank, falls back to the input filename (unchanged behaviour).
+            this.outputFileName = firstOption(args, "outputFileName");
+
             boolean localMode = props.getInputBucket() == null || props.getInputBucket().isBlank();
             if (localMode) {
                 runLocal();
@@ -66,7 +81,7 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
 
     private void runLocal() throws Exception {
         String inputFile = props.getInputKey();
-        String outputFile = props.resolveOutputKey();
+        String outputFile = props.resolveOutputKey(outputFileName);
         log.info("Local mode: {} -> {}", inputFile, outputFile);
         launch(inputFile, outputFile);
     }
@@ -76,7 +91,7 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
         Path workDir = Files.createTempDirectory("osaga-");
         Path inputFile = workDir.resolve("input.csv");
         Path outputFile = workDir.resolve("output.csv");
-        String outputKey = props.resolveOutputKey();
+        String outputKey = props.resolveOutputKey(outputFileName);
         log.info("Processing s3://{}/{} -> s3://{}/{}",
                 props.getInputBucket(), props.getInputKey(), props.getOutputBucket(), outputKey);
 
@@ -107,9 +122,22 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
     }
 
     private void launch(String inputFile, String outputFile) throws Exception {
+        // These arrive as command-line args from EventBridge → Step Functions; when omitted
+        // (e.g. local runs) fall back to sensible defaults (never pass null to addString).
+        String batchTimestamp = this.batchTimestamp;
+        if (batchTimestamp == null || batchTimestamp.isBlank()) {
+            batchTimestamp = Instant.now().toString();
+        }
+        String appName = this.appName;
+        if (appName == null || appName.isBlank()) {
+            appName = "osaga-demo";
+        }
+
         JobParameters params = new JobParametersBuilder()
                 .addString("inputFile", inputFile)
                 .addString("outputFile", outputFile)
+                .addString("batchTimestamp", batchTimestamp)
+                .addString("appName", appName)
                 .addLong("run.id", System.currentTimeMillis()) // make each launch unique
                 .toJobParameters();
 
@@ -121,6 +149,12 @@ public class S3JobRunner implements ApplicationRunner, ExitCodeGenerator {
             log.info("Job completed: {} rows written", exec.getStepExecutions().stream()
                     .mapToLong(se -> se.getWriteCount()).sum());
         }
+    }
+
+    /** First value of a {@code --name=…} option, or {@code null} if the option is absent. */
+    private static String firstOption(ApplicationArguments args, String name) {
+        List<String> v = args.getOptionValues(name);
+        return (v == null || v.isEmpty()) ? null : v.get(0);
     }
 
     @Override

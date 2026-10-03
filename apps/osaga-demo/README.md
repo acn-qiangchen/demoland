@@ -36,16 +36,25 @@ routes to the terminal `Failed` state instead of `Succeeded`.
 ## What the batch job does
 
 Reads the input CSV (`id,name,value`), **uppercases the `name` column**, appends a
-**`processed_at`** timestamp column, and writes the result CSV to
+**`processed_at`** timestamp column plus two columns threaded through from EventBridge —
+**`batch_timestamp`** (the S3 event's `$.time`) and **`app_name`** (the literal
+`osaga-demo`) — and writes the result CSV to
 `s3://<output-bucket>/processed/<input-filename>`.
+
+Output header: `id,name,value,processed_at,batch_timestamp,app_name`.
 
 Example — `sample-data/input.csv`:
 
 ```
-id,name,value        id,name,value,processed_at
-1,alice,100    ─▶     1,ALICE,100,2026-08-29T00:00:00Z
-2,bob,205             2,BOB,205,2026-08-29T00:00:00Z
+id,name,value        id,name,value,processed_at,batch_timestamp,app_name
+1,alice,100    ─▶     1,ALICE,100,2026-08-29T00:00:00Z,2026-08-29T00:00:00Z,osaga-demo
+2,bob,205             2,BOB,205,2026-08-29T00:00:00Z,2026-08-29T00:00:00Z,osaga-demo
 ```
+
+The `batch_timestamp` and `app_name` values are **passed in from EventBridge** (via the
+input transformer) into the Step Functions state machine and on to the ECS task as
+**command-line arguments** (`--batchTimestamp=… --appName=…`) — the app only reads and
+writes them, it does not generate them. See [Command-line arguments](#command-line-arguments).
 
 ## `app.json` note (batch vs. web template)
 
@@ -67,6 +76,30 @@ Supplied at runtime as **RunTask container overrides** by Step Functions (from t
 The app uses AWS SDK v2, which picks up credentials from the ECS **task role** automatically
 — no keys anywhere.
 
+## Command-line arguments
+
+Two parameters reach the app as **plain named command-line arguments** (not env vars), parsed
+manually from Spring Boot's `ApplicationArguments` in `S3JobRunner`:
+
+| Arg                        | Meaning                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `--batchTimestamp=<val>`   | Written as the `batch_timestamp` column; sourced from the EventBridge event `$.time`                 |
+| `--appName=<val>`          | Written as the `app_name` column; the literal `osaga-demo` from the EventBridge input template       |
+| `--outputFileName=<val>`   | **Optional.** Names the processed output object `processed/<val>`; when omitted/blank, the output keeps the input filename (`processed/<input-filename>`) |
+
+The flow is: EventBridge event → input transformer (`$.time` / literal) → Step Functions input
+JSON → ECS **`Command` override** (`--batchTimestamp=… --appName=… --outputFileName=…`, appended
+to the Dockerfile `ENTRYPOINT`) → `ApplicationArguments` → `JobParameters` / output-key
+resolution. All three are **optional** — when omitted (e.g. local runs), `batch_timestamp`
+defaults to `Instant.now()`, `app_name` to `osaga-demo`, and the output filename to the input
+filename.
+
+`outputFileName` is not part of the S3 `Object Created` event, so the automated pipeline does
+not set it (output keeps the input filename). The state machine normalises a missing
+`outputFileName` to an empty string (a `Choice` → `Pass`), so it can be supplied by a manual
+Step Functions execution (or a customised EventBridge input template) without breaking the
+default S3-triggered path.
+
 ## Run locally
 
 Requires JDK 17 and Maven.
@@ -81,9 +114,15 @@ input path and `OUTPUT_KEY` as a local output path — S3 is skipped entirely.
 
 ```bash
 INPUT_KEY=sample-data/input.csv OUTPUT_KEY=/tmp/out.csv \
-  java -jar target/osaga-demo-0.1.0.jar
+  java -jar target/osaga-demo-0.1.0.jar \
+  --batchTimestamp=2026-08-30T12:00:00Z --appName=osaga-demo
 cat /tmp/out.csv
 ```
+
+The `--batchTimestamp` / `--appName` / `--outputFileName` args are all optional locally — if
+omitted they default to the current time (`Instant.now()`), `osaga-demo`, and the input
+filename respectively. To name the output object explicitly, add e.g.
+`--outputFileName=result.csv` (writes `processed/result.csv` in S3 mode).
 
 Build the container (multi-stage, runs as non-root):
 

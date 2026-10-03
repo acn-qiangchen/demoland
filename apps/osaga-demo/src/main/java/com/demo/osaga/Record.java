@@ -11,6 +11,8 @@ public class Record {
     private String name;
     private String value;
     private String processedAt;
+    private String batchTimestamp;
+    private String appName;
 
     public String getId() {
         return id;
@@ -42,5 +44,21 @@ public class Record {
 
     public void setProcessedAt(String processedAt) {
         this.processedAt = processedAt;
+    }
+
+    public String getBatchTimestamp() {
+        return batchTimestamp;
+    }
+
+    public void setBatchTimestamp(String batchTimestamp) {
+        this.batchTimestamp = batchTimestamp;
+    }
+
+    public String getAppName() {
+        return appName;
+    }
+
+    public void setAppName(String appName) {
+        this.appName = appName;
     }
 }

@@ -19,12 +19,22 @@ public class JobProperties {
     private String outputBucket;
     private String outputKey;
 
-    /** Effective output key, defaulting to {@code processed/<input-filename>}. */
-    public String resolveOutputKey() {
+    /**
+     * Effective output key. An explicit OUTPUT_KEY wins; otherwise the file is written to
+     * {@code processed/<name>}, where {@code <name>} is the caller-supplied
+     * {@code outputFileName} (the {@code --outputFileName} arg) when present, else the
+     * input filename.
+     */
+    public String resolveOutputKey(String outputFileName) {
         if (outputKey != null && !outputKey.isBlank()) {
             return outputKey;
         }
-        String name = inputKey == null ? "output.csv" : inputKey.substring(inputKey.lastIndexOf('/') + 1);
+        String name;
+        if (outputFileName != null && !outputFileName.isBlank()) {
+            name = outputFileName;
+        } else {
+            name = inputKey == null ? "output.csv" : inputKey.substring(inputKey.lastIndexOf('/') + 1);
+        }
         return "processed/" + name;
     }
 
