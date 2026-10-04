@@ -16,7 +16,7 @@ demoland/
 │   ├── platform/            # Shared infrastructure (VPC, cluster, ingress, DNS)
 │   │   └── terraform/
 │   └── <app>/               # Per-app infrastructure, one folder per demo
-│       └── terraform/       #   e.g. infra/llm-demo/, infra/osaga-demo/
+│       └── terraform/       #   e.g. infra/llm-longrun-demo/, infra/osaga-demo/
 ├── platform/
 │   ├── gateway/             # Ingress / routing configuration
 │   └── monitoring/          # Observability stack (Prometheus, Grafana, Loki)

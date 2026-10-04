@@ -2,7 +2,7 @@
 
 An **event-driven batch pipeline**. Drop a CSV in the input bucket and an orchestrated
 saga runs a Spring Batch job on Fargate that transforms the file and writes the result to
-an output bucket. Unlike `llm-demo` (an always-on web service), this app is a **batch job**:
+an output bucket. Unlike `llm-longrun-demo` (an always-on web service), this app is a **batch job**:
 it runs once and exits, and its exit code drives the saga's success / failure branches.
 
 ```
