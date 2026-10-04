@@ -49,7 +49,7 @@ resource "aws_route_table_association" "public" {
 
 # The batch task takes no inbound traffic — it only makes outbound calls (ECR pull,
 # S3, CloudWatch Logs). Egress-all, no ingress. It runs in a public subnet with a
-# public IP (no NAT gateway), mirroring llm-demo's no-NAT approach.
+# public IP (no NAT gateway), mirroring llm-longrun-demo's no-NAT approach.
 resource "aws_security_group" "task" {
   name        = "${var.app_name}-task-sg"
   description = "Fargate batch task: egress only"

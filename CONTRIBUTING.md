@@ -9,7 +9,7 @@ feature/my-demo  →  main  →  staging (auto)  →  prod (manual dispatch)
 ```
 
 1. Branch off `main`: `git checkout -b feature/<your-demo-name>`
-2. Copy an existing demo of the same shape (web → `apps/llm-demo`, batch → `apps/osaga-demo`)
+2. Copy an existing demo of the same shape (web → `apps/llm-longrun-demo`, batch → `apps/osaga-demo`)
    — there is no `new-demo.sh` scaffolder yet
 3. Build and test locally (see the demo's own `README.md`)
 4. Open a PR — CI will run build + lint + container scan
@@ -33,7 +33,7 @@ Every demo is **self-contained** and uses one `<name>` verbatim across three par
   state key (`<name>/terraform.tfstate`).
 - **Demo docs live with the demo** — put anything demo-specific (quickstart, architecture spec,
   coding notes) under `apps/<name>/`, not at the repo root.
-- **Demos may differ in shape** — web (`llm-demo`: backend + bff + frontend) vs batch
+- **Demos may differ in shape** — web (`llm-longrun-demo`: backend + bff + frontend) vs batch
   (`osaga-demo`: single module, no server) — but each still carries a complete `app.json`.
 
 ## Code Standards

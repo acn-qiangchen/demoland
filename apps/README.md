@@ -19,7 +19,7 @@ template. Keep all demo-specific docs (quickstart, architecture spec, coding not
 
 ## Directory conventions
 
-The exact contents vary by shape — a web demo (`llm-demo` and `llm-async-demo`: `backend/` + `bff/` +
+The exact contents vary by shape — a web demo (`llm-longrun-demo`: `backend/` + `bff/` +
 `frontend/`) looks different from a batch demo (`osaga-demo`: a single module). The minimum a demo
 carries:
 
@@ -34,7 +34,7 @@ apps/<name>/
 
 ## Adding a new demo
 
-Copy an existing demo of the same shape (web → `llm-demo`, batch → `osaga-demo`), rename it, and
+Copy an existing demo of the same shape (web → `llm-longrun-demo`, batch → `osaga-demo`), rename it, and
 adjust `app.json`. There is no `new-demo.sh` scaffolder yet. Then add its `infra/<name>/terraform/`
 and `.github/workflows/<name>-*.yml` alongside (see the existing demos for the pattern).
 
