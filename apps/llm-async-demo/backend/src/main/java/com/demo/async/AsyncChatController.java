@@ -44,6 +44,8 @@ public class AsyncChatController {
 
     public record StartResponse(String jobId, String store, JobStatus status) {}
 
+    public record FullResponse(String content) {}
+
     public record ErrorResponse(String error) {}
 
     @PostMapping("/chat/async")
@@ -55,6 +57,19 @@ public class AsyncChatController {
         return store.save(job)
                 .doOnSuccess(v -> runInBackground(store, job, request.message()))
                 .thenReturn(new StartResponse(job.jobId(), store.name(), job.status()));
+    }
+
+    /**
+     * Synchronous blocking endpoint: no job store involved. Blocks until the LLM finishes generating,
+     * then returns the full answer as a single {@code {"content":"..."}} body. This is the baseline the
+     * async pattern contrasts against — the request is held open the whole time it generates, so a long
+     * answer trips the ALB idle timeout on the deployed path (a 504), whereas the async submit + poll
+     * requests each return in well under that limit.
+     */
+    @PostMapping("/chat/sync")
+    public Mono<FullResponse> chatSync(@RequestBody AsyncChatRequest request) {
+        return openAiService.getFullResponse(request.message())
+                .map(FullResponse::new);
     }
 
     @GetMapping("/jobs/{jobId}")

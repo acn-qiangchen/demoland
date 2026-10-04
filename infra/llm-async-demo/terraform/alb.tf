@@ -5,7 +5,7 @@ resource "aws_lb" "this" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
 
-  idle_timeout = 120
+  idle_timeout = var.alb_idle_timeout
 
   tags = { Name = "${var.app_name}-alb" }
 }

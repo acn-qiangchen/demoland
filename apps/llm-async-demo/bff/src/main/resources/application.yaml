@@ -7,9 +7,11 @@ llm:
     base-url: ${LLM_SERVICE_BASE_URL:http://localhost:8080}
 
   # ---- HTTP request timeouts (milliseconds) ----
-  # The async endpoints return quickly (the long LLM call runs in the background), so modest
-  # timeouts are fine here — nothing waits on generation inside a relayed request.
+  # The async endpoints return quickly (the long LLM call runs in the background). The sync endpoint,
+  # however, blocks on the backend→OpenAI generation — and that bff→backend wait does NOT traverse the
+  # ALB. So read-timeout must stay ABOVE the ALB idle_timeout (~20s), or the bff would 504 first and the
+  # ALB would never be the component that fires. 60s keeps the ALB the binding limit on the sync path.
   http:
     connect-timeout: ${LLM_HTTP_CONNECT_TIMEOUT:5000}
-    read-timeout: ${LLM_HTTP_READ_TIMEOUT:10000}
+    read-timeout: ${LLM_HTTP_READ_TIMEOUT:60000}
     connection-request-timeout: ${LLM_HTTP_CONNECTION_REQUEST_TIMEOUT:5000}
