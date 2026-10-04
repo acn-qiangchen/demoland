@@ -19,8 +19,9 @@ template. Keep all demo-specific docs (quickstart, architecture spec, coding not
 
 ## Directory conventions
 
-The exact contents vary by shape — a web demo (`llm-demo`: `backend/` + `bff/` + `frontend/`) looks
-different from a batch demo (`osaga-demo`: a single module). The minimum a demo carries:
+The exact contents vary by shape — a web demo (`llm-demo` and `llm-async-demo`: `backend/` + `bff/` +
+`frontend/`) looks different from a batch demo (`osaga-demo`: a single module). The minimum a demo
+carries:
 
 ```
 apps/<name>/

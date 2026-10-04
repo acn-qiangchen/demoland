@@ -1,0 +1,45 @@
+{
+  "name": "llm-async-demo",
+  "description": "Async request/poll LLM demo: Spring Boot WebFlux + Spring AI backend accepts a job, runs the LLM call in the background, and serves the result via polling. Job store switches between ElastiCache Redis and DynamoDB per request.",
+  "version": "0.1.0",
+  "maintainer": "qiang-chen",
+  "port": 8080,
+  "healthEndpoint": "/health",
+  "tags": ["web", "api", "llm", "async", "polling", "redis", "dynamodb"],
+  "env": [
+    {
+      "name": "SPRING_AI_OPENAI_API_KEY",
+      "default": "",
+      "description": "OpenAI API key used by Spring AI to call the OpenAI API (injected from AWS Secrets Manager in the deployed task)"
+    },
+    {
+      "name": "REDIS_HOST",
+      "default": "localhost",
+      "description": "Hostname of the Redis job store (ElastiCache endpoint in the deployed task)"
+    },
+    {
+      "name": "REDIS_PORT",
+      "default": "6379",
+      "description": "Port of the Redis job store"
+    },
+    {
+      "name": "JOBS_TABLE_NAME",
+      "default": "llm-async-demo-jobs",
+      "description": "DynamoDB table name used for the DynamoDB job store"
+    },
+    {
+      "name": "AWS_REGION",
+      "default": "us-east-1",
+      "description": "AWS region for the DynamoDB client (set automatically in the Fargate task)"
+    },
+    {
+      "name": "PORT",
+      "default": "8080",
+      "description": "Port the app listens on (server.port)"
+    }
+  ],
+  "resources": {
+    "requests": { "cpu": "256m", "memory": "512Mi" },
+    "limits":   { "cpu": "512m", "memory": "1024Mi" }
+  }
+}
