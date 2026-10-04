@@ -62,6 +62,17 @@ public class RelayController {
                 String.class);
     }
 
+    @PostMapping("/chat/sync")
+    public ResponseEntity<String> chatSync(@RequestBody AsyncChatRequest request) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return restTemplate.exchange(
+                backendBaseUrl + "/api/chat/sync",
+                HttpMethod.POST,
+                new HttpEntity<>(request, headers),
+                String.class);
+    }
+
     @GetMapping("/jobs/{jobId}")
     public ResponseEntity<String> getJob(@PathVariable String jobId,
                                          @RequestParam(defaultValue = "redis") String store) {

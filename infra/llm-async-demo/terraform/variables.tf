@@ -45,3 +45,15 @@ variable "redis_node_type" {
   type        = string
   default     = "cache.t3.micro"
 }
+
+variable "alb_idle_timeout" {
+  description = <<-EOT
+    ALB idle timeout in seconds. Tuned deliberately LOW so the ALB is the binding timeout on the
+    synchronous /api/chat/sync path: it sits below the API Gateway BUFFERED cap (29s) and CloudFront
+    origin read (60s), and below the bff read-timeout (60s). A long blocking sync request is cut here
+    (client sees a 504), demonstrating exactly what the async submit + poll pattern avoids — every
+    async request returns well under this limit.
+  EOT
+  type        = number
+  default     = 20
+}

@@ -105,6 +105,18 @@
     color: var(--accent);
     opacity: 1;
   }
+  /* mode toggle: async (accent) vs sync (amber, echoing the blocking path) */
+  .toggle-btn.active-async {
+    background: rgba(79, 142, 247, 0.18);
+    color: var(--accent);
+    opacity: 1;
+  }
+  .toggle-btn.active-sync {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--amber);
+    opacity: 1;
+  }
+  .async-only.hidden { display: none; }
 
   /* poll interval */
   .interval-wrap { display: flex; align-items: center; gap: 10px; }
@@ -260,6 +272,17 @@
   .polllog.visible { display: block; }
   .polllog .line { white-space: pre-wrap; }
 
+  /* ---- sync spinner ---- */
+  .sync-wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 0; }
+  .spin {
+    width: 26px; height: 26px; border: 3px solid var(--border); border-top-color: var(--amber);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin-lbl { font-size: 12px; color: var(--amber); opacity: 0.85; }
+  .sync-error { color: var(--red); }
+  .sync-error .hint { color: var(--text); opacity: 0.8; display: block; margin-top: 10px; font-size: 13px; }
+
   /* ---- footer ---- */
   footer { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
   .tag {
@@ -271,17 +294,34 @@
     border-radius: 5px;
     padding: 4px 9px;
   }
+  a.tag.arch {
+    color: var(--accent);
+    opacity: 0.9;
+    text-decoration: none;
+    border-color: rgba(79, 142, 247, 0.4);
+    background: rgba(79, 142, 247, 0.1);
+    transition: opacity 0.15s;
+  }
+  a.tag.arch:hover { opacity: 1; }
 </style>
 </head>
 <body>
   <div class="shell">
     <header>
       <h1>llm-async-demo &mdash; request &amp; poll</h1>
-      <p class="subtitle">Fire a long-running LLM job, get a job id back immediately, then poll for the result.</p>
+      <p class="subtitle">Fire a long-running LLM job, get a job id back immediately, then poll for the result &mdash; or switch to <b>sync (blocking)</b> to watch a single long request hit the ALB idle timeout instead.</p>
     </header>
 
     <div class="controls">
       <div class="control-group">
+        <span class="control-label">Mode</span>
+        <div class="toggle">
+          <button class="toggle-btn active-async" id="btnAsync">async (poll)</button>
+          <button class="toggle-btn" id="btnSync">sync (blocking)</button>
+        </div>
+      </div>
+
+      <div class="control-group async-only" id="storeGroup">
         <span class="control-label">Job store</span>
         <div class="toggle">
           <button class="toggle-btn active-redis" id="btnRedis">redis</button>
@@ -289,7 +329,7 @@
         </div>
       </div>
 
-      <div class="control-group">
+      <div class="control-group async-only" id="intervalGroup">
         <span class="control-label">Poll interval</span>
         <div class="interval-wrap">
           <input type="range" id="interval" min="500" max="5000" step="500" value="1000" />
@@ -313,9 +353,9 @@
       <div class="output" id="output"><span class="placeholder">Awaiting input&hellip;</span></div>
 
       <div class="metrics" id="metrics">
-        <div class="metric"><span class="k">job</span> <span class="v job" id="mJob">&ndash;</span></div>
-        <div class="metric"><span class="k">store</span> <span class="v" id="mStore">&ndash;</span></div>
-        <div class="metric"><span class="k">polls</span> <span class="v" id="mPolls">&ndash;</span></div>
+        <div class="metric async-only"><span class="k">job</span> <span class="v job" id="mJob">&ndash;</span></div>
+        <div class="metric async-only"><span class="k">store</span> <span class="v" id="mStore">&ndash;</span></div>
+        <div class="metric async-only"><span class="k">polls</span> <span class="v" id="mPolls">&ndash;</span></div>
         <div class="metric"><span class="k">elapsed</span> <span class="v" id="mElapsed">&ndash;</span></div>
       </div>
 
@@ -336,12 +376,14 @@
       <span class="tag">ElastiCache Redis</span>
       <span class="tag">DynamoDB</span>
       <span class="tag">gpt-4o</span>
+      <a class="tag arch" href="architecture.html">🗺 architecture &rarr;</a>
     </footer>
   </div>
 
 <script>
   // Relative paths — served behind the same origin as the BFF, which relays to the LLM backend.
   const START_URL = '/api/chat/async';
+  const SYNC_URL  = '/api/chat/sync';
   const jobUrl = (id, store) => `/api/jobs/${encodeURIComponent(id)}?store=${encodeURIComponent(store)}`;
 
   const output     = document.getElementById('output');
@@ -356,13 +398,35 @@
   const mElapsed   = document.getElementById('mElapsed');
   const btnRedis   = document.getElementById('btnRedis');
   const btnDynamo  = document.getElementById('btnDynamo');
+  const btnAsync   = document.getElementById('btnAsync');
+  const btnSync    = document.getElementById('btnSync');
   const intervalEl = document.getElementById('interval');
   const intervalVal = document.getElementById('intervalVal');
   const pollLog    = document.getElementById('pollLog');
+  const endpointLabel = document.getElementById('endpointLabel');
+  const asyncOnly  = document.querySelectorAll('.async-only');
 
+  let mode = 'async';        // 'async' | 'sync'
   let store = 'redis';       // 'redis' | 'dynamo'
   let pollInterval = 1000;   // ms
   let busy = false;
+
+  // ---- mode toggle (async poll vs sync blocking) ----
+  function setMode(m) {
+    mode = m;
+    btnAsync.className = 'toggle-btn' + (m === 'async' ? ' active-async' : '');
+    btnSync.className  = 'toggle-btn' + (m === 'sync'  ? ' active-sync'  : '');
+    // Store + poll-interval controls and the async-only metrics apply only to the poll pattern.
+    asyncOnly.forEach(el => el.classList.toggle('hidden', m !== 'async'));
+    if (m === 'sync') {
+      pollLog.classList.remove('visible');
+      endpointLabel.innerHTML = 'POST /api/chat/sync &rarr; blocks until done';
+    } else {
+      endpointLabel.innerHTML = 'POST /api/chat/async &rarr; poll /api/jobs/{id}';
+    }
+  }
+  btnAsync.addEventListener('click', () => { if (!busy) setMode('async'); });
+  btnSync.addEventListener('click',  () => { if (!busy) setMode('sync');  });
 
   // ---- store toggle ----
   function setStore(s) {
@@ -415,8 +479,23 @@
     input.value = '';
     input.style.height = 'auto';
 
-    // reset UI
     output.textContent = '';
+    try {
+      if (mode === 'sync') {
+        await runSync(message);
+      } else {
+        await runAsync(message);
+      }
+    } finally {
+      busy = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  // ---- async (request + poll) ----
+  async function runAsync(message) {
+    // reset UI
     pollLog.innerHTML = '';
     pollLog.classList.add('visible');
     metrics.classList.add('visible');
@@ -482,10 +561,57 @@
       output.textContent = '[error] ' + err.message;
       setStatus('failed', 'error');
     }
+  }
 
-    busy = false;
-    sendBtn.disabled = false;
-    input.focus();
+  // ---- sync (blocking) ----
+  // A single request held open for the whole generation. On the deployed path the ALB cuts the idle
+  // (no-bytes-yet) connection at its low idle_timeout, so a long answer surfaces as a 504 or a reset
+  // connection — the exact failure the async pattern avoids.
+  async function runSync(message) {
+    metrics.classList.add('visible');
+    output.innerHTML =
+      '<div class="sync-wait"><div class="spin"></div>' +
+      '<div class="spin-lbl">blocking on generation — connection held open…</div></div>';
+    setStatus('processing', 'blocking…');
+
+    const started = performance.now();
+    mElapsed.textContent = '0.0 s';
+    const timer = setInterval(() => { mElapsed.textContent = elapsed(started) + ' s'; }, 100);
+
+    try {
+      const resp = await fetch(SYNC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+      clearInterval(timer);
+      mElapsed.textContent = elapsed(started) + ' s';
+
+      if (!resp.ok) {
+        output.innerHTML =
+          '<span class="sync-error">[HTTP ' + resp.status + '] the blocking request was cut off.' +
+          '<span class="hint">The sync request stayed open while gpt-4o generated. It exceeded the ' +
+          'ALB idle timeout (~20s), so the load balancer closed the connection before the answer was ' +
+          'ready. This is exactly what the async submit + poll pattern avoids — switch to <b>async ' +
+          '(poll)</b> and ask the same thing.</span></span>';
+        setStatus('failed', 'HTTP ' + resp.status);
+        return;
+      }
+
+      const data = await resp.json();
+      output.textContent = data.content;
+      output.scrollTop = 0;
+      setStatus('completed', 'completed');
+    } catch (err) {
+      clearInterval(timer);
+      mElapsed.textContent = elapsed(started) + ' s';
+      output.innerHTML =
+        '<span class="sync-error">[connection error] ' + err.message +
+        '<span class="hint">The blocking connection was reset before the answer arrived — typically the ' +
+        'ALB closing the idle connection at its ~20s idle timeout. This is the failure the async submit ' +
+        '+ poll pattern avoids — switch to <b>async (poll)</b> and ask the same thing.</span></span>';
+      setStatus('failed', 'error');
+    }
   }
 
   function elapsed(since) {
@@ -493,6 +619,7 @@
   }
 
   // Initialise
+  setMode('async');
   setStore('redis');
   input.focus();
 </script>

@@ -52,6 +52,15 @@ Rules:
   `scripts/create-github-oidc-role.sh` (AWS CLI + shell, **no Terraform**). The shared Terraform
   state backend (S3 `demoland-tfstate-<account_id>` + DynamoDB `demoland-tflock`) is created
   idempotently by each deploy workflow, not checked in.
+- **New infra services need matching OIDC deploy-role permissions.** The deploy role's inline
+  policy lives in `scripts/create-github-oidc-role.sh` (the `perms.json` heredoc) and is the single
+  source of truth for what the workflow may do. It is granted per **service** at `"*"` scope (e.g.
+  `ecs:*`, `dynamodb:*`, `elasticache:*`). **Whenever you add a Terraform resource that uses an AWS
+  service not already in that `InfraServices` action list, add the `<service>:*` action there in the
+  same change** — otherwise the deploy fails at apply time with an `AccessDenied` / "no identity-based
+  policy allows" error on the new resource. The role must then be re-synced by re-running
+  `scripts/create-github-oidc-role.sh` (it idempotently re-applies the inline policy). After adding
+  any new provider/resource type, cross-check its required actions against the list before pushing.
 - **Demos may differ in shape, but keep the contract.** Web demos (`llm-demo`: backend + bff +
   frontend) and batch demos (`osaga-demo`: single module, no server) look different, but each
   carries a complete `app.json` — keep every field for schema consistency even when a value is
