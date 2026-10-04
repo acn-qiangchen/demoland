@@ -24,7 +24,7 @@ Spring Boot backend and the same `gpt-4o` model:
    per request.
 
 The three paths conflict on exactly one setting — the ALB `idle_timeout` — and a single moderate
-default (**20s**) demonstrates all three at once.
+default (**5s**) demonstrates all three at once.
 
 ---
 
@@ -136,7 +136,7 @@ the ALB is the binding limit on the sync path (the bff→backend hop does not tr
 
 ## 7. Deployment notes (why a single idle timeout works)
 
-- **ALB `idle_timeout` default = 20s** (`var.alb_idle_timeout`). Sits below the API Gateway BUFFERED cap
+- **ALB `idle_timeout` default = 5s** (`var.alb_idle_timeout`). Sits below the API Gateway BUFFERED cap
   (29s) and CloudFront origin read (60s). Sync (no bytes) is cut here; SSE (byte every few hundred ms)
   resets it; async (sub-second submit) never reaches it.
 - **API Gateway**: an explicit `/api/chat` POST resource uses `response_transfer_mode = STREAM`

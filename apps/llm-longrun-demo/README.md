@@ -16,7 +16,7 @@ The merged demo is built on the same stack throughout: Spring Boot 3.4.1 **WebFl
 1.0.0** (`gpt-4o`), a thin blocking **BFF** relay, and a vanilla-JS frontend.
 
 > The key insight: the three paths conflict on exactly one setting — the ALB `idle_timeout`. A single
-> **moderate default (20s)** demonstrates all three at once: sync trips it, SSE's token-per-few-hundred-ms
+> **low default (5s)** demonstrates all three at once: sync trips it, SSE's token-per-few-hundred-ms
 > flow resets it, and async's sub-second submit never reaches it.
 
 ## Shape
@@ -92,5 +92,5 @@ DynamoDB table with primary key `jobId` (String) and TTL on attribute `ttl`.
 Manual GitHub Actions: **llm-longrun-demo deploy** / **llm-longrun-demo destroy** (workflow_dispatch).
 Infra lives in `infra/llm-longrun-demo/terraform/` and provisions ElastiCache Redis + a DynamoDB table
 alongside the ECS/ALB/API Gateway/CloudFront stack. API Gateway uses **STREAM** mode on `/api/chat`
-(for SSE) and a greedy **BUFFERED** proxy for everything else; the ALB `idle_timeout` defaults to **20s**
+(for SSE) and a greedy **BUFFERED** proxy for everything else; the ALB `idle_timeout` defaults to **5s**
 (`var.alb_idle_timeout`) so the sync baseline visibly trips it while SSE and async sail under it.

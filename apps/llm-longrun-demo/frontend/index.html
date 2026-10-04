@@ -677,7 +677,7 @@
         output.innerHTML =
           '<span class="sync-error">[HTTP ' + resp.status + '] the blocking request was cut off.' +
           '<span class="hint">The sync request stayed open while gpt-4o generated. It exceeded the ' +
-          'ALB idle timeout (~20s), so the load balancer closed the connection before the answer was ' +
+          'ALB idle timeout (~5s), so the load balancer closed the connection before the answer was ' +
           'ready. This is exactly what the two fixes avoid — switch to <b>sse (stream)</b> or ' +
           '<b>async (poll)</b> and ask the same thing.</span></span>';
         setStatus('failed', 'HTTP ' + resp.status);
@@ -694,7 +694,7 @@
       output.innerHTML =
         '<span class="sync-error">[connection error] ' + err.message +
         '<span class="hint">The blocking connection was reset before the answer arrived — typically the ' +
-        'ALB closing the idle connection at its ~20s idle timeout. This is the failure the two fixes ' +
+        'ALB closing the idle connection at its ~5s idle timeout. This is the failure the two fixes ' +
         'avoid — switch to <b>sse (stream)</b> or <b>async (poll)</b> and ask the same thing.</span></span>';
       setStatus('failed', 'error');
     }
