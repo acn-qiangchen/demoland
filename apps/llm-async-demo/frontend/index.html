@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LLM Async / Poll Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #151820;
+    --border: #252a35;
+    --accent: #4f8ef7;
+    --text: #c9d1e0;
+    --text-bright: #eaf0ff;
+    --green: #3dd68c;
+    --amber: #f59e0b;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px;
+  }
+
+  .shell { width: 100%; max-width: 820px; }
+
+  header { margin-bottom: 22px; }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin: 0 0 6px;
+    letter-spacing: -0.5px;
+  }
+
+  .subtitle { font-size: 14px; color: var(--text); opacity: 0.75; margin: 0; }
+
+  /* ---- controls row ---- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .control-group { display: flex; flex-direction: column; gap: 6px; }
+
+  .control-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.55;
+  }
+
+  /* store toggle */
+  .toggle {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    width: fit-content;
+  }
+  .toggle-btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    opacity: 0.6;
+  }
+  .toggle-btn:hover { opacity: 0.85; }
+  .toggle-btn:disabled { cursor: not-allowed; }
+  .toggle-btn.active-redis {
+    background: rgba(248, 113, 113, 0.16);
+    color: var(--red);
+    opacity: 1;
+  }
+  .toggle-btn.active-dynamo {
+    background: rgba(79, 142, 247, 0.18);
+    color: var(--accent);
+    opacity: 1;
+  }
+
+  /* poll interval */
+  .interval-wrap { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { width: 160px; accent-color: var(--purple); }
+  .interval-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--purple);
+    min-width: 60px;
+  }
+
+  /* ---- terminal window ---- */
+  .terminal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #10131a;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .dot.red { background: #ff5f56; }
+  .dot.yellow { background: #ffbd2e; }
+  .dot.green { background: #27c93f; }
+
+  .titlebar .label {
+    margin-left: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    opacity: 0.6;
+  }
+
+  .status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 12px;
+    opacity: 0.85;
+  }
+  .status .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text);
+    transition: background 0.2s;
+  }
+  .status.ready      .status-dot { background: var(--text); }
+  .status.pending    .status-dot { background: #ffbd2e; animation: pulse 1.2s ease-in-out infinite; }
+  .status.processing .status-dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .status.completed  .status-dot { background: var(--green); }
+  .status.failed     .status-dot { background: var(--red); }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ---- output ---- */
+  .output {
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-bright);
+    padding: 20px 18px;
+    min-height: 220px;
+    max-height: 46vh;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .output .placeholder { opacity: 0.4; }
+
+  /* ---- metrics ---- */
+  .metrics {
+    display: none;
+    gap: 22px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    background: #10131a;
+    font-family: var(--mono);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .metrics.visible { display: flex; }
+  .metric .k { opacity: 0.55; }
+  .metric .v { color: var(--accent); font-weight: 500; }
+  .metric .v.job { color: var(--purple); }
+
+  /* ---- input ---- */
+  .input-area {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .prompt-prefix {
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 15px;
+    padding-top: 8px;
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-bright);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 8px 0;
+    min-height: 24px;
+    max-height: 140px;
+  }
+  textarea::placeholder { color: var(--text); opacity: 0.35; }
+
+  button.send {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--bg);
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  button.send:hover { opacity: 0.9; }
+  button.send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---- poll log ---- */
+  .polllog {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    opacity: 0.6;
+    padding: 10px 18px;
+    border-top: 1px solid var(--border);
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
+  }
+  .polllog.visible { display: block; }
+  .polllog .line { white-space: pre-wrap; }
+
+  /* ---- footer ---- */
+  footer { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    opacity: 0.7;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 4px 9px;
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <h1>llm-async-demo &mdash; request &amp; poll</h1>
+      <p class="subtitle">Fire a long-running LLM job, get a job id back immediately, then poll for the result.</p>
+    </header>
+
+    <div class="controls">
+      <div class="control-group">
+        <span class="control-label">Job store</span>
+        <div class="toggle">
+          <button class="toggle-btn active-redis" id="btnRedis">redis</button>
+          <button class="toggle-btn" id="btnDynamo">dynamodb</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">Poll interval</span>
+        <div class="interval-wrap">
+          <input type="range" id="interval" min="500" max="5000" step="500" value="1000" />
+          <span class="interval-val" id="intervalVal">1000 ms</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="terminal">
+      <div class="titlebar">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span class="label" id="endpointLabel">POST /api/chat/async &rarr; poll /api/jobs/{id}</span>
+        <span class="status ready" id="status">
+          <span class="status-dot"></span>
+          <span id="statusText">ready</span>
+        </span>
+      </div>
+
+      <div class="output" id="output"><span class="placeholder">Awaiting input&hellip;</span></div>
+
+      <div class="metrics" id="metrics">
+        <div class="metric"><span class="k">job</span> <span class="v job" id="mJob">&ndash;</span></div>
+        <div class="metric"><span class="k">store</span> <span class="v" id="mStore">&ndash;</span></div>
+        <div class="metric"><span class="k">polls</span> <span class="v" id="mPolls">&ndash;</span></div>
+        <div class="metric"><span class="k">elapsed</span> <span class="v" id="mElapsed">&ndash;</span></div>
+      </div>
+
+      <div class="polllog" id="pollLog"></div>
+
+      <div class="input-area">
+        <span class="prompt-prefix">&gt;_</span>
+        <textarea id="input" rows="1" placeholder="Ask something&hellip;  (Enter to send, Shift+Enter for newline)"></textarea>
+        <button class="send" id="send">send</button>
+      </div>
+    </div>
+
+    <footer>
+      <span class="tag">Spring Boot 3.4</span>
+      <span class="tag">Spring AI 1.0</span>
+      <span class="tag">WebFlux</span>
+      <span class="tag">Async + Poll</span>
+      <span class="tag">ElastiCache Redis</span>
+      <span class="tag">DynamoDB</span>
+      <span class="tag">gpt-4o</span>
+    </footer>
+  </div>
+
+<script>
+  // Relative paths — served behind the same origin as the BFF, which relays to the LLM backend.
+  const START_URL = '/api/chat/async';
+  const jobUrl = (id, store) => `/api/jobs/${encodeURIComponent(id)}?store=${encodeURIComponent(store)}`;
+
+  const output     = document.getElementById('output');
+  const input      = document.getElementById('input');
+  const sendBtn    = document.getElementById('send');
+  const statusEl   = document.getElementById('status');
+  const statusText = document.getElementById('statusText');
+  const metrics    = document.getElementById('metrics');
+  const mJob       = document.getElementById('mJob');
+  const mStore     = document.getElementById('mStore');
+  const mPolls     = document.getElementById('mPolls');
+  const mElapsed   = document.getElementById('mElapsed');
+  const btnRedis   = document.getElementById('btnRedis');
+  const btnDynamo  = document.getElementById('btnDynamo');
+  const intervalEl = document.getElementById('interval');
+  const intervalVal = document.getElementById('intervalVal');
+  const pollLog    = document.getElementById('pollLog');
+
+  let store = 'redis';       // 'redis' | 'dynamo'
+  let pollInterval = 1000;   // ms
+  let busy = false;
+
+  // ---- store toggle ----
+  function setStore(s) {
+    store = s;
+    btnRedis.className  = 'toggle-btn' + (s === 'redis'  ? ' active-redis'  : '');
+    btnDynamo.className = 'toggle-btn' + (s === 'dynamo' ? ' active-dynamo' : '');
+  }
+  btnRedis.addEventListener('click',  () => { if (!busy) setStore('redis');  });
+  btnDynamo.addEventListener('click', () => { if (!busy) setStore('dynamo'); });
+
+  // ---- poll interval ----
+  intervalEl.addEventListener('input', () => {
+    pollInterval = parseInt(intervalEl.value, 10);
+    intervalVal.textContent = pollInterval + ' ms';
+  });
+
+  // ---- helpers ----
+  function setStatus(state, text) {
+    statusEl.className = 'status ' + state;
+    statusText.textContent = text;
+  }
+
+  function logPoll(msg) {
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.textContent = msg;
+    pollLog.appendChild(line);
+    pollLog.scrollTop = pollLog.scrollHeight;
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Auto-grow textarea
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+  });
+  sendBtn.addEventListener('click', submit);
+
+  async function submit() {
+    if (busy) return;
+    const message = input.value.trim();
+    if (!message) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+    input.value = '';
+    input.style.height = 'auto';
+
+    // reset UI
+    output.textContent = '';
+    pollLog.innerHTML = '';
+    pollLog.classList.add('visible');
+    metrics.classList.add('visible');
+    mJob.textContent = '–';
+    mStore.textContent = store;
+    mPolls.textContent = '0';
+    mElapsed.textContent = '0.0 s';
+
+    const started = performance.now();
+    let polls = 0;
+
+    try {
+      // 1) fire-and-forget: start the job
+      setStatus('pending', 'starting…');
+      const startResp = await fetch(START_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, store })
+      });
+      if (!startResp.ok) throw new Error('start failed: HTTP ' + startResp.status);
+
+      const { jobId, store: usedStore } = await startResp.json();
+      mJob.textContent = jobId.slice(0, 8) + '…';
+      mStore.textContent = usedStore;
+      logPoll(`[${elapsed(started)}] job ${jobId} created in ${usedStore}`);
+      output.textContent = 'Job accepted. Polling for result…';
+
+      // 2) poll until terminal
+      while (true) {
+        await sleep(pollInterval);
+        polls++;
+        mPolls.textContent = polls;
+        mElapsed.textContent = elapsed(started) + ' s';
+
+        const pollResp = await fetch(jobUrl(jobId, usedStore));
+        if (pollResp.status === 404) {
+          logPoll(`[${elapsed(started)}] poll #${polls} → 404 (not found yet)`);
+          continue;
+        }
+        if (!pollResp.ok) throw new Error('poll failed: HTTP ' + pollResp.status);
+
+        const job = await pollResp.json();
+        logPoll(`[${elapsed(started)}] poll #${polls} → ${job.status}`);
+
+        if (job.status === 'PENDING' || job.status === 'PROCESSING') {
+          setStatus(job.status.toLowerCase(), job.status.toLowerCase() + '…');
+          continue;
+        }
+        if (job.status === 'COMPLETED') {
+          output.textContent = job.result;
+          output.scrollTop = 0;
+          mElapsed.textContent = elapsed(started) + ' s';
+          setStatus('completed', 'completed');
+          break;
+        }
+        if (job.status === 'FAILED') {
+          output.textContent = '[failed] ' + (job.error || 'unknown error');
+          setStatus('failed', 'failed');
+          break;
+        }
+      }
+    } catch (err) {
+      output.textContent = '[error] ' + err.message;
+      setStatus('failed', 'error');
+    }
+
+    busy = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+
+  function elapsed(since) {
+    return ((performance.now() - since) / 1000).toFixed(1);
+  }
+
+  // Initialise
+  setStore('redis');
+  input.focus();
+</script>
+</body>
+</html>

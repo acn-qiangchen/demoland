@@ -1,0 +1,15 @@
+server:
+  port: 8081
+
+llm:
+  service:
+    # Base URL of the LLM backend the BFF forwards to.
+    base-url: ${LLM_SERVICE_BASE_URL:http://localhost:8080}
+
+  # ---- HTTP request timeouts (milliseconds) ----
+  # The async endpoints return quickly (the long LLM call runs in the background), so modest
+  # timeouts are fine here — nothing waits on generation inside a relayed request.
+  http:
+    connect-timeout: ${LLM_HTTP_CONNECT_TIMEOUT:5000}
+    read-timeout: ${LLM_HTTP_READ_TIMEOUT:10000}
+    connection-request-timeout: ${LLM_HTTP_CONNECTION_REQUEST_TIMEOUT:5000}
