@@ -55,5 +55,5 @@ variable "alb_idle_timeout" {
     async request returns well under this limit.
   EOT
   type        = number
-  default     = 20
+  default     = 5
 }

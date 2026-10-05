@@ -357,7 +357,7 @@
         <b>SSE streaming</b> (keep the connection alive by flowing tokens) and <b>async request + poll</b>
         (return a job id immediately, poll for the result) &mdash; both avoid it. All three travel the
         <b>exact same</b> infrastructure path and share one backend, one BFF and one frontend. The one
-        tuned knob is the <b>ALB idle timeout (~20s)</b>: low enough that the sync baseline visibly trips
+        tuned knob is the <b>ALB idle timeout (~5s)</b>: low enough that the sync baseline visibly trips
         it, while a byte-every-few-hundred-ms SSE stream and a sub-second async submit both sail under it.
       </p>
     </header>
@@ -372,7 +372,7 @@
         <div class="chev">&rsaquo;</div>
         <div class="hop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16"/><path d="M7 8h10M7 16h10"/><circle cx="7" cy="12" r="1.4"/><circle cx="17" cy="12" r="1.4"/></svg></span><span class="txt"><div class="n">API Gateway</div><div class="s">STREAM on /api/chat · BUFFERED else</div><div class="to">29s cap (BUFFERED)</div></span></div>
         <div class="chev">&rsaquo;</div>
-        <div class="hop binding"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H5v4M12 12h7v4"/></svg></span><span class="txt"><div class="n">ALB :80</div><div class="s">header auth</div><div class="to">idle 20s &mdash; binding limit</div></span></div>
+        <div class="hop binding"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H5v4M12 12h7v4"/></svg></span><span class="txt"><div class="n">ALB :80</div><div class="s">header auth</div><div class="to">idle 5s &mdash; binding limit</div></span></div>
         <div class="chev">&rsaquo;</div>
         <div class="hop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></span><span class="txt"><div class="n">BFF :8081</div><div class="s">relay</div><div class="to">read 60s</div></span></div>
         <div class="chev">&rsaquo;</div>
@@ -381,7 +381,7 @@
         <div class="hop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.5L18 9l-4.2 1.5L12 15l-1.8-4.5L6 9l4.2-1.5L12 3z"/><path d="M18 15l.9 2.2L21 18l-2.1.8L18 21l-.9-2.2L15 18l2.1-.8L18 15z"/></svg></span><span class="txt"><div class="n">OpenAI</div><div class="s">gpt-4o</div></span></div>
       </div>
       <p class="foot">
-        The timeouts are stacked on purpose. The <b>ALB idle timeout (<code>var.alb_idle_timeout = 20</code>)</b>
+        The timeouts are stacked on purpose. The <b>ALB idle timeout (<code>var.alb_idle_timeout = 5</code>)</b>
         sits <em>below</em> the API Gateway BUFFERED cap (29s) and CloudFront origin read (60s), and the bff
         <code>read-timeout</code> is raised to <b>60s</b> &mdash; that bff&rarr;backend wait does <b>not</b>
         traverse the ALB, so if it were low the bff would 504 first and the ALB would never fire. A long
@@ -423,7 +423,7 @@
             <div class="rail"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H5v4M12 12h7v4"/></svg></div><div class="connector"></div></div>
             <div class="body">
               <div class="title">ALB &mdash; cuts the connection</div>
-              <div class="meta">No response bytes have flowed, so the inbound connection is <b class="hi">idle</b>. At <code>idle_timeout = 20s</code> the ALB closes it. A long answer routinely needs more than 20s, so the client gets a <b class="hi">504 (or a reset connection)</b> before the answer is ready.</div>
+              <div class="meta">No response bytes have flowed, so the inbound connection is <b class="hi">idle</b>. At <code>idle_timeout = 5s</code> the ALB closes it. A long answer routinely needs more than 5s, so the client gets a <b class="hi">504 (or a reset connection)</b> before the answer is ready.</div>
             </div>
           </div>
 
@@ -441,7 +441,7 @@
           <div class="pv-body sync-pv">
             <div class="spin"></div>
             <div class="spin-lbl">blocking on generation — connection held open…</div>
-            <div class="sync-504"><span class="code504">504</span><span class="sub">ALB closed the idle connection at ~20s — answer never arrived</span></div>
+            <div class="sync-504"><span class="code504">504</span><span class="sub">ALB closed the idle connection at ~5s — answer never arrived</span></div>
           </div>
         </div>
       </div>
@@ -467,7 +467,7 @@
             <div class="rail"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg></div><div class="connector"></div></div>
             <div class="body">
               <div class="title">BFF &rarr; ALB</div>
-              <div class="meta">The blocking bff uses <code>StreamingResponseBody</code> to read the upstream <code>InputStream</code> 512 bytes at a time and <code>flush()</code> each chunk &mdash; no buffering. Every flushed byte <b class="hi">resets the ALB idle timer</b>, so even with the 20s idle timeout the connection stays alive.</div>
+              <div class="meta">The blocking bff uses <code>StreamingResponseBody</code> to read the upstream <code>InputStream</code> 512 bytes at a time and <code>flush()</code> each chunk &mdash; no buffering. Every flushed byte <b class="hi">resets the ALB idle timer</b>, so even with the 5s idle timeout the connection stays alive.</div>
             </div>
           </div>
 
@@ -509,7 +509,7 @@
             <div class="rail"><div class="dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></div><div class="connector"></div></div>
             <div class="body">
               <div class="title">Submit &rarr; 202 immediately</div>
-              <div class="meta">Backend <code>startAsync()</code> writes a <code>PENDING</code> job to the selected store, kicks the LLM call off on <code>Schedulers.boundedElastic()</code>, and returns <b class="hi">202 with a job id in milliseconds</b>. The request never waits on generation, so it is far under 20s.</div>
+              <div class="meta">Backend <code>startAsync()</code> writes a <code>PENDING</code> job to the selected store, kicks the LLM call off on <code>Schedulers.boundedElastic()</code>, and returns <b class="hi">202 with a job id in milliseconds</b>. The request never waits on generation, so it is far under 5s.</div>
             </div>
           </div>
 
@@ -718,10 +718,10 @@
           <tr><td>connection lifetime</td><td>held open for the <b>whole generation</b>, no bytes</td><td>held open, but <b>bytes flow continuously</b></td><td>many <b>short</b> requests, each sub-second</td></tr>
           <tr><td>backend shape</td><td><code>Mono&lt;FullResponse&gt;</code>, client waits</td><td><code>Flux.concat(tokens, done)</code> — per token</td><td>202 + background job on <code>boundedElastic()</code></td></tr>
           <tr><td>API GW transfer mode</td><td><code>BUFFERED</code> (greedy proxy)</td><td><b class="sse"><code>STREAM</code></b> on explicit <code>/api/chat</code></td><td><code>BUFFERED</code> (greedy proxy)</td></tr>
-          <tr><td>ALB idle timeout (~20s)</td><td><b class="sync">fires — cuts the idle connection</b></td><td>never fires — each token resets the timer</td><td>never applies — no request runs that long</td></tr>
+          <tr><td>ALB idle timeout (~5s)</td><td><b class="sync">fires — cuts the idle connection</b></td><td>never fires — each token resets the timer</td><td>never applies — no request runs that long</td></tr>
           <tr><td>job store</td><td>none — answer returned inline</td><td>none — answer streamed inline</td><td><b class="async">Redis or DynamoDB</b>, per request</td></tr>
           <tr><td>failure mode</td><td><b class="sync">504 / reset</b> on a long answer</td><td>survives; <code>event: error</code> if the upstream drops</td><td>completes; poll loops until <code>COMPLETED</code></td></tr>
-          <tr><td>user experience</td><td>spinner, then an error past ~20s</td><td>tokens appear live; low perceived latency</td><td>instant job id, then the answer when ready</td></tr>
+          <tr><td>user experience</td><td>spinner, then an error past ~5s</td><td>tokens appear live; low perceived latency</td><td>instant job id, then the answer when ready</td></tr>
           <tr><td>metrics shown</td><td>elapsed</td><td>TTFB · live token count · total</td><td>job id · store · poll count · elapsed</td></tr>
         </tbody>
       </table>
