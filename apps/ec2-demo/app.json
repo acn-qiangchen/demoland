@@ -1,0 +1,14 @@
+{
+  "name": "ec2-demo",
+  "description": "A single standalone EC2 instance (Amazon Linux 2023) reachable two ways: SSH with a hardcoded public key, and SSM Session Manager with no inbound port or key. Pure-infra demo — no application code, container, or ECR build.",
+  "version": "0.1.0",
+  "maintainer": "qiang-chen",
+  "port": null,
+  "healthEndpoint": null,
+  "tags": ["ec2", "ssh", "ssm", "infra"],
+  "env": [],
+  "resources": {
+    "requests": { "cpu": "0", "memory": "0" },
+    "limits":   { "cpu": "0", "memory": "0" }
+  }
+}

@@ -112,7 +112,7 @@ cat >"${WORKDIR}/perms.json" <<'JSON'
       "Action": [
         "ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "apigateway:*",
         "s3:*", "cloudfront:*", "secretsmanager:*", "logs:*", "dynamodb:*",
-        "elasticache:*",
+        "elasticache:*", "ssm:*",
         "application-autoscaling:*", "states:*", "events:*", "sts:GetCallerIdentity"
       ],
       "Resource": "*"
@@ -125,7 +125,10 @@ cat >"${WORKDIR}/perms.json" <<'JSON'
         "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
         "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:ListRolePolicies",
         "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies",
-        "iam:ListInstanceProfilesForRole", "iam:CreateServiceLinkedRole"
+        "iam:ListInstanceProfilesForRole", "iam:CreateServiceLinkedRole",
+        "iam:CreateInstanceProfile", "iam:DeleteInstanceProfile", "iam:GetInstanceProfile",
+        "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile", "iam:ListInstanceProfileTags"
       ],
       "Resource": "*"
     }
