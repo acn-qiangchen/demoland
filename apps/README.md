@@ -2,6 +2,14 @@
 
 Each subdirectory is an independent demo application.
 
+## Demos
+
+| Name                | Shape          | What it is                                                                 |
+| ------------------- | -------------- | ------------------------------------------------------------------------- |
+| `llm-longrun-demo`  | web            | Token-streaming LLM chat (Spring WebFlux + static frontend).              |
+| `osaga-demo`        | batch          | S3 → EventBridge → Step Functions → ECS Fargate Spring Batch pipeline.    |
+| `ec2-demo`          | infra          | One standalone EC2 instance reachable via SSH + SSM Session Manager.      |
+
 ## Self-contained per demo
 
 Every demo uses one `<name>` verbatim across three parallel trees and owns everything under them:
